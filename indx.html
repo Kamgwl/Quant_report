@@ -141,9 +141,10 @@ jun:-715000, jun_roi:-0.2383 },
 ];
 
 // ── CASH STRATEGY DETECTION ────────────────────────────────────────────────────
-const CASH_STRATEGIES = ["CASH", "cash", "ETF", "NA"];
+const CASH_STRATEGIES = ["CASH", "ETF", "NA"];
 function isCashStrategy(r) {
-return CASH_STRATEGIES.includes(r.strategy) ||
+const s = (r.strategy || "").trim().toUpperCase();
+return CASH_STRATEGIES.includes(s) ||
 r.name.toLowerCase().includes("cash") ||
 r.name.toLowerCase().includes("etf");
 }
@@ -161,7 +162,8 @@ const q1 = r.apr + r.may + r.jun;
 const q1_roi = apr_roi + may_roi + jun_roi;
 const ann_roi = q1_roi * ANN_FACTOR;
 const ann_pnl = q1 * ANN_FACTOR;
-return { ...r, apr_roi, may_roi, jun_roi, q1, q1_roi, ann_roi, ann_pnl, isCash: isCashStrategy(r) };
+const strategy = (r.strategy || "").trim().toUpperCase();
+return { ...r, strategy, apr_roi, may_roi, jun_roi, q1, q1_roi, ann_roi, ann_pnl, isCash: isCashStrategy({ ...r, strategy }) };
 }
 
 const DATA_ALL = RAW.map(enrichRow);
@@ -917,14 +919,11 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
             const cashMay = DATA_CASH.reduce((s, r) => s + r.may, 0);
             const cashJun = DATA_CASH.reduce((s, r) => s + r.jun, 0);
             const cashQ1 = cashApr + cashMay + cashJun;
-            const cashQ1ROI = cashTotalFund > 0 ? cashQ1 / (cashTotalFund * 1e5) : 0;
+            const cashQ1ROI = cashTotalFund > 0 ? cashQ1 / (cashTotalFund * 1e7) : 0;
             const cashTrend = [
-            { month: "April", pnl: cashApr, roi: cashTotalFund > 0 ? +(cashApr / (cashTotalFund * 1e5) * 100).toFixed(2)
-            : 0 },
-            { month: "May", pnl: cashMay, roi: cashTotalFund > 0 ? +(cashMay / (cashTotalFund * 1e5) * 100).toFixed(2) :
-            0 },
-            { month: "June", pnl: cashJun, roi: cashTotalFund > 0 ? +(cashJun / (cashTotalFund * 1e5) * 100).toFixed(2)
-            : 0 },
+            { month: "April", pnl: cashApr, roi: cashTotalFund > 0 ? cashApr / (cashTotalFund * 1e7) : 0 },
+            { month: "May", pnl: cashMay, roi: cashTotalFund > 0 ? cashMay / (cashTotalFund * 1e7) : 0 },
+            { month: "June", pnl: cashJun, roi: cashTotalFund > 0 ? cashJun / (cashTotalFund * 1e7) : 0 },
             ];
             return (
             <div>
@@ -942,8 +941,8 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {/* KPIs */}
                 <div style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" , gap: 12,
                     marginBottom: 24 }}>
-                    <StatCard label="Cash AUM" value={`₹${cashTotalFund.toFixed(1)}L`}
-                        sub={`₹${(cashTotalFund/100).toFixed(2)} Cr`} color="#fbbf24" />
+                    <StatCard label="Cash AUM" value={fmtFund(cashTotalFund)}
+                        sub="Total Utilized Fund" color="#fbbf24" />
                     <StatCard label="Q1 Net P&L" value={fmtSign(cashQ1)} color={cashQ1>= 0 ? POS : NEG} />
                         <StatCard label="Q1 ROI" value={fmtROI(cashQ1ROI)} color={cashQ1ROI>= 0 ? POS : NEG} />
                             <StatCard label="April P&L" value={fmtSign(cashApr)} color={cashApr>= 0 ? POS : NEG} />
@@ -981,7 +980,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
                                 <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${v}%`}
+                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
