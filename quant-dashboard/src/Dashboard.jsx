@@ -122,7 +122,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     })
     .slice(0, 25);
     return sorted.map(r => ({
-    name: r.name.length > 12 ? r.name.slice(0, 12) + "…" : r.name,
+    name: r.name,
     fullName: r.name,
     pnl: r[monthKey],
     roi: +(r[monthROIKey] * 100).toFixed(2), // actual ROI (monthly or Q1), no projection
@@ -314,12 +314,12 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                     <ResponsiveContainer width="100%" height={420}>
-                        <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 100 }}>
+                        <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 160 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 11 }}
-                                    axisLine={false} tickLine={false} width={100} />
+                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 10 }}
+                                    interval={0} width={160} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload, label })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
@@ -411,14 +411,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (All Users)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                     <ResponsiveContainer width="100%" height={Math.max(500, ranked.length * 22)}>
-                        <BarChart data={ranked.map(r=> ({ name: r.name.length > 14 ? r.name.slice(0, 14) + "…" : r.name,
+                        <BarChart data={ranked.map(r=> ({ name: r.name,
                             pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name }))}
-                            layout="vertical" barSize={14} margin={{ left: 110 }}>
+                            layout="vertical" barSize={14} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
                                 <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 10 }}
-                                    axisLine={false} tickLine={false} width={110} />
+                                    interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
@@ -501,13 +501,13 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
                             P&L — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
-                            <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 90
+                            <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 120
                                 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                                 <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 10 }} tickFormatter={v=>
                                     fmt(v)} axisLine={false} tickLine={false} />
                                     <YAxis type="category" dataKey="strategy" tick={{ fill: "var(--axis)" , fontSize: 10 }}
-                                        axisLine={false} tickLine={false} width={90} />
+                                        interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
@@ -523,12 +523,12 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             % — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.filter(d=> d.fund > 0).slice(0, 14)} layout="vertical"
-                                barSize={18} margin={{ left: 90 }}>
+                                barSize={18} margin={{ left: 120 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                                 <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 10 }} tickFormatter={v=>
                                     `${v}%`} axisLine={false} tickLine={false} />
                                     <YAxis type="category" dataKey="strategy" tick={{ fill: "var(--axis)" , fontSize: 10 }}
-                                        axisLine={false} tickLine={false} width={90} />
+                                        interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="roi" name="ROI %" radius={[0, 4, 4, 0]}>
@@ -667,14 +667,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}`,
                     marginBottom: 28 }}>
                     <ResponsiveContainer width="100%" height={Math.max(200, cashRanked.length * 38)}>
-                        <BarChart data={cashRanked.map(r=> ({ name: r.name.length > 16 ? r.name.slice(0,16)+"…" :
-                            r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
-                            strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 130 }}>
+                        <BarChart data={cashRanked.map(r=> ({ name: r.name,
+                            pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
+                            strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 11 }}
-                                    axisLine={false} tickLine={false} width={130} />
+                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 10 }}
+                                    interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
