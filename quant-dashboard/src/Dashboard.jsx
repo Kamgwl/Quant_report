@@ -1,180 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quant Strategy Dashboard — FY 2026-27 Q1</title>
-  <meta name="description" content="Quant Strategy FY 2026-27 Q1 Performance Dashboard — April to June 2026" />
-
-  <!-- React + ReactDOM (UMD) — vendored locally so it works offline / on any host -->
-  <script src="vendor/react.production.min.js"></script>
-  <script src="vendor/react-dom.production.min.js"></script>
-
-  <!-- prop-types (UMD) — required by Recharts -->
-  <script src="vendor/prop-types.min.js"></script>
-
-  <!-- Recharts (UMD) -->
-  <script src="vendor/Recharts.js"></script>
-
-  <!-- Babel standalone (JSX transpiler) -->
-  <script src="vendor/babel.min.js"></script>
-
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #070b14; color: #e2eaf7; font-family: 'DM Sans', sans-serif; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0d1526; }
-    ::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 3px; }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-
-  <script type="text/babel" data-presets="react">
-// Destructure hooks from React global
-const { useState, useMemo } = React;
-
-// Destructure Recharts components from Recharts global
-const {
+import { useState, useMemo } from 'react'
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, Cell, ReferenceLine, Legend
-} = Recharts;
+  LineChart, Line, Cell, ReferenceLine, Legend,
+} from 'recharts'
+import { RAW } from './data'
 
 // ── RAW DATA ──────────────────────────────────────────────────────────────────
-const RAW = [
-{ code:"P2881", name:"Abhishek_1", strategy:"COSMOS", fund:3, apr:330000, apr_roi:1.10, may:-198725, may_roi:-0.6624,
-jun:-82000, jun_roi:-0.2733 },
-{ code:"P3039", name:"Abhishek", strategy:"", fund:3, apr:-21500, apr_roi:-0.0717, may:2411, may_roi:0.0080, jun:0,
-jun_roi:0 },
-{ code:"P3389", name:"Abdul", strategy:"", fund:0.5, apr:0, apr_roi:0, may:-44821, may_roi:-0.8964, jun:1185,
-jun_roi:0.0237 },
-{ code:"P2951", name:"Aman 20-60", strategy:"20_60", fund:3.5, apr:602695, apr_roi:2.009, may:-40749, may_roi:-0.1358,
-jun:-8290, jun_roi:-0.0276 },
-{ code:"P2967", name:"Aman", strategy:"Money Circle",fund:1, apr:-115177,apr_roi:-1.1518, may:-270250, may_roi:-2.7025,
-jun:0, jun_roi:0 },
-{ code:"P3166", name:"Aman Dohre", strategy:"NSE FO", fund:3, apr:-86659, apr_roi:-1.7332, may:165574, may_roi:0.5519,
-jun:-229521, jun_roi:-0.765 },
-{ code:"P3390", name:"Aman Dohre XTS34", strategy:"NSE FO",fund:1.5, apr:0, apr_roi:0, may:-175097, may_roi:-1.1673,
-jun:-1734, jun_roi:-0.0116 },
-{ code:"P3117", name:"Ansh Aggarwal",strategy:"Falcon", fund:15, apr:194000, apr_roi:0.1293, may:-774466,
-may_roi:-0.5163, jun:-289714, jun_roi:-0.1931 },
-{ code:"P3224", name:"Ansh Cash", strategy:"CASH", fund:2, apr:803317, apr_roi:4.0166, may:0, may_roi:0, jun:0,
-jun_roi:0 },
-{ code:"PSW023",name:"Ansh SWV", strategy:"Falcon", fund:3, apr:88900, apr_roi:0.2963, may:-191000, may_roi:-0.6367,
-jun:0, jun_roi:0 },
-{ code:"PHPO06",name:"Ansh HPO", strategy:"Falcon", fund:3, apr:63500, apr_roi:0.2117, may:-244500, may_roi:-0.815,
-jun:0, jun_roi:0 },
-{ code:"P3323", name:"Amit&Kartik", strategy:"NSE FO", fund:1, apr:460500, apr_roi:1.535, may:-255000, may_roi:-0.6375,
-jun:0, jun_roi:0 },
-{ code:"P3323_1",name:"Amit&Kartik XTS35",strategy:"", fund:6, apr:-168658,apr_roi:-3.3732, may:-103041,
-may_roi:-0.1718, jun:124256, jun_roi:0.2071 },
-{ code:"P2827", name:"Bharat ETF", strategy:"ETF", fund:1, apr:4927, apr_roi:0.0493, may:1404, may_roi:0.014, jun:-787,
-jun_roi:-0.00787 },
-{ code:"P2827_2",name:"Bharat Cash", strategy:"CASH", fund:1, apr:1240967,apr_roi:12.4097, may:0, may_roi:0, jun:0,
-jun_roi:0 },
-{ code:"P3090", name:"Bharat Straddle",strategy:"STRADDLE", fund:1, apr:0, apr_roi:0, may:-35229, may_roi:-0.3523,
-jun:-145089, jun_roi:-1.4509 },
-{ code:"P2954", name:"Bharat Munjal_5",strategy:"STRADDLE", fund:1, apr:0, apr_roi:0, may:-88900, may_roi:-0.889, jun:0,
-jun_roi:0 },
-{ code:"P3196", name:"Bharat Munjal BFO",strategy:"STRADDLE",fund:1, apr:141000, apr_roi:1.41, may:-66086,
-may_roi:-0.6609, jun:0, jun_roi:0 },
-{ code:"P3079", name:"Yogesh Cash", strategy:"CASH", fund:1, apr:1642522,apr_roi:16.4252, may:42324, may_roi:0.4232,
-jun:-3391, jun_roi:-0.0339 },
-{ code:"P2777", name:"Yogesh Kumar", strategy:"STRADDLE", fund:1, apr:10517, apr_roi:0.1052, may:25727, may_roi:0.2573,
-jun:-71637, jun_roi:-0.7164 },
-{ code:"P2826", name:"Yogesh ATS", strategy:"", fund:1, apr:-45133, apr_roi:-0.4513, may:-98600, may_roi:-0.986,
-jun:-10000, jun_roi:-0.10 },
-{ code:"P2954_2",name:"Bharat Munjal S1515",strategy:"STRADDLE",fund:1,apr:100262,apr_roi:1.0026, may:-159139,
-may_roi:-1.5914, jun:0, jun_roi:0 },
-{ code:"P2817", name:"DK Sir_M", strategy:"Maximum", fund:2.5, apr:308939, apr_roi:1.2358, may:79409, may_roi:0.3176,
-jun:-153624, jun_roi:-0.6145 },
-{ code:"P2792", name:"DK Sir_T", strategy:"ThanosNF", fund:4, apr:405124, apr_roi:1.0128, may:-290952, may_roi:-0.7274,
-jun:269272, jun_roi:0.6732 },
-{ code:"P3181", name:"Harshit XTS32",strategy:"SELF", fund:0.25, apr:35922, apr_roi:0.3266, may:-178282,
-may_roi:-1.6207, jun:-25304, jun_roi:-0.2300 },
-{ code:"P3240", name:"Harshit XTS38",strategy:"SELF", fund:0.25, apr:10003, apr_roi:0.4001, may:-76253, may_roi:-3.0501,
-jun:0, jun_roi:0 },
-{ code:"P3311", name:"Himanshu Pal", strategy:"SELF", fund:0.5, apr:202276, apr_roi:1.3485, may:-2293, may_roi:-0.0153,
-jun:-251290, jun_roi:-1.6753 },
-{ code:"P3109", name:"Jyoti Prakesh XTS30",strategy:"Straddle",fund:1.1,apr:16344,apr_roi:0.1486, may:-99601,
-may_roi:-0.9055, jun:-80807, jun_roi:-0.7346 },
-{ code:"P3313", name:"Jyoti Prakesh ATS",strategy:"TRANDING",fund:0.5,apr:-203101,apr_roi:-4.0620, may:-128306,
-may_roi:-2.5661, jun:0, jun_roi:0 },
-{ code:"P3146", name:"Jinesh Jain", strategy:"STOCK FO", fund:2.3, apr:3190697,apr_roi:13.8726, may:688029,
-may_roi:2.9914, jun:-207441, jun_roi:-0.9019 },
-{ code:"P2105", name:"Kamlesh", strategy:"Wanda", fund:5, apr:1319283,apr_roi:2.6386, may:841036, may_roi:1.6821,
-jun:-130452, jun_roi:-0.2609 },
-{ code:"P3024", name:"Kartaram_1", strategy:"Spider 2.0", fund:10, apr:2899700,apr_roi:2.8997, may:-30465,
-may_roi:-0.0305, jun:-122056, jun_roi:-0.122 },
-{ code:"PSW019",name:"Kartaram SWV097",strategy:"Spider 2.0",fund:13, apr:2457630,apr_roi:2.4576, may:357271,
-may_roi:0.2748, jun:-117212, jun_roi:-0.0902 },
-{ code:"SWV0096",name:"Kartaram SWV096",strategy:"Spider 2.0",fund:1.5,apr:339000,apr_roi:2.26, may:-17574,
-may_roi:-0.1172, jun:-9380, jun_roi:-0.0625 },
-{ code:"PHPO07",name:"Kartaram HPO", strategy:"Spider 2.0", fund:6, apr:679300, apr_roi:2.2643, may:199400,
-may_roi:0.3323, jun:-40645, jun_roi:-0.0677 },
-{ code:"XMR0548",name:"Kartaram XMR",strategy:"Spider 2.0", fund:1, apr:114100, apr_roi:0.9128, may:-13242,
-may_roi:-0.1059, jun:-10776, jun_roi:-0.0862 },
-{ code:"PA528", name:"Archana Ma'am",strategy:"SPIDER 2.0", fund:1.5, apr:354500, apr_roi:2.3633, may:-16090,
-may_roi:-0.1073, jun:-9647, jun_roi:-0.0643 },
-{ code:"P3202", name:"Gagandeep", strategy:"SELF", fund:5, apr:213967, apr_roi:0.4279, may:844228, may_roi:1.6885,
-jun:28164, jun_roi:0.0563 },
-{ code:"P3020", name:"Mahavir Jindal",strategy:"SELF", fund:5, apr:668954, apr_roi:1.3379, may:-630839, may_roi:-1.2617,
-jun:-117259, jun_roi:-0.2345 },
-{ code:"P3341", name:"Maneesh Yadav",strategy:"NSE FO", fund:0.5, apr:47009, apr_roi:0.9402, may:-22476,
-may_roi:-0.4495, jun:75495, jun_roi:1.5099 },
-{ code:"P2971", name:"Neeraj Garg_1",strategy:"Straddle", fund:0.6, apr:3832, apr_roi:0.0639, may:56826, may_roi:0.9471,
-jun:0, jun_roi:0 },
-{ code:"P2971_2",name:"Neeraj Garg_2",strategy:"ACE1", fund:0.4, apr:104032, apr_roi:2.6008, may:-9232, may_roi:-0.2308,
-jun:1783, jun_roi:0.0446 },
-{ code:"P2940", name:"Prince Cash", strategy:"cash", fund:0.5, apr:77627, apr_roi:1.5525, may:-318673, may_roi:-6.3735,
-jun:109000, jun_roi:2.18 },
-{ code:"P3347", name:"Prince FO", strategy:"FO", fund:0.5, apr:43500, apr_roi:0.87, may:-206560, may_roi:-4.1312,
-jun:-94551, jun_roi:-1.8910 },
-{ code:"P3070", name:"Prateek_2", strategy:"multipul", fund:4, apr:134591, apr_roi:0.3365, may:-283771, may_roi:-0.7094,
-jun:-30086, jun_roi:-0.0752 },
-{ code:"P2999", name:"Prateek ETF", strategy:"ETF", fund:1, apr:601979, apr_roi:6.0198, may:74933, may_roi:0.7493,
-jun:-45210, jun_roi:-0.4521 },
-{ code:"P3186", name:"Prateek NFO", strategy:"NFO", fund:0.5, apr:0, apr_roi:0, may:-2189, may_roi:-0.0438, jun:-28219,
-jun_roi:-0.5644 },
-{ code:"P3168", name:"Prabjot Singh",strategy:"NSE FO", fund:3, apr:-109500,apr_roi:-0.365, may:174432, may_roi:0.5814,
-jun:-117364, jun_roi:-0.3912 },
-{ code:"P3135", name:"Piyush Singhal",strategy:"Strangle", fund:3, apr:-4883324,apr_roi:-16.2777,may:76551,
-may_roi:0.2552, jun:-2900, jun_roi:-0.0097 },
-{ code:"PSW024",name:"Piyush SWV", strategy:"Strangle", fund:3, apr:-586367,apr_roi:-1.9546, may:152411, may_roi:0.508,
-jun:-3200, jun_roi:-0.0107 },
-{ code:"P3342", name:"Raghav Tuli", strategy:"", fund:1, apr:38535, apr_roi:0.3854, may:11519, may_roi:0.0768,
-jun:33828, jun_roi:0.2255 },
-{ code:"P3082", name:"Ramakar Jha", strategy:"STOCK FO", fund:1, apr:3123845,apr_roi:31.2385, may:232568,
-may_roi:2.3257, jun:-83727, jun_roi:-0.8373 },
-{ code:"P3048", name:"Shahid", strategy:"SELF", fund:1, apr:633005, apr_roi:2.1100, may:538474, may_roi:1.7949,
-jun:-300492, jun_roi:-1.0016 },
-{ code:"P3208", name:"Sajal Sharma ATS",strategy:"", fund:0.5, apr:343500, apr_roi:6.87, may:352000, may_roi:7.04,
-jun:-243000, jun_roi:-4.86 },
-{ code:"P3335", name:"Sajal Sharma_2",strategy:"", fund:4, apr:-159000,apr_roi:-0.3975, may:-106300, may_roi:-0.2658,
-jun:0, jun_roi:0 },
-{ code:"P3119", name:"Sajal Sharma_3",strategy:"", fund:4, apr:151712, apr_roi:0.3793, may:145700, may_roi:0.3643,
-jun:-128000, jun_roi:-0.32 },
-{ code:"P3297", name:"Sudeep", strategy:"ATS", fund:1.5, apr:92278, apr_roi:0.5767, may:35279, may_roi:0.2352, jun:0,
-jun_roi:0 },
-{ code:"P3360", name:"Vidhya Sagar", strategy:"SELF", fund:0.5, apr:34594, apr_roi:0.6919, may:-44456, may_roi:-0.8891,
-jun:-20506, jun_roi:-0.4101 },
-{ code:"P3385", name:"Vikas Gupta XTS13",strategy:"SELF", fund:4, apr:0, apr_roi:0, may:-206359, may_roi:-0.5159,
-jun:-308065, jun_roi:-0.7702 },
-{ code:"P3386", name:"Vikas Gupta XTS15",strategy:"SELF", fund:1, apr:0, apr_roi:0, may:-52710, may_roi:-0.527,
-jun:-163033, jun_roi:-1.6303 },
-{ code:"P3110", name:"Varun Tondan", strategy:"self", fund:2.5, apr:251440, apr_roi:0.8381, may:-173423,
-may_roi:-0.5781, jun:-211979, jun_roi:-0.7066 },
-{ code:"P3113", name:"Vaishali", strategy:"self", fund:1.5, apr:-37267, apr_roi:-0.1491, may:-50171, may_roi:-0.2007,
-jun:2922, jun_roi:0.0117 },
-{ code:"P3218", name:"Muhunthan", strategy:"CASH", fund:1, apr:0, apr_roi:0, may:0, may_roi:0, jun:0, jun_roi:0 },
-{ code:"P3334", name:"Varun Tondan XTS10", strategy:"self", fund:3, apr:0, apr_roi:0, may:0, may_roi:0, jun:0, jun_roi:0 },
-// Deepesh group
-{ code:"P3013", name:"Deepesh_1", strategy:"NA", fund:30, apr:3718000,apr_roi:1.2393, may:-191500, may_roi:-0.0638,
-jun:-715000, jun_roi:-0.2383 },
-{ code:"P3112", name:"Deepesh_2", strategy:"NA", fund:2, apr:3262972,apr_roi:16.3149, may:0, may_roi:0, jun:0, jun_roi:0
-},
-{ code:"P3361", name:"Nishaanth", strategy:"NA", fund:0, apr:0, apr_roi:0, may:212000, may_roi:0, jun:-265000, jun_roi:0 },
-];
+
 
 // ── CASH STRATEGY DETECTION ────────────────────────────────────────────────────
 const CASH_STRATEGIES = ["CASH", "cash", "ETF", "NA"];
@@ -227,30 +59,30 @@ const fmtROI = (n) => `${(n*100).toFixed(2)}%`;
 const fmtSign = (n) => n >= 0 ? `+${fmt(n)}` : fmt(n);
 
 // ── COLORS ─────────────────────────────────────────────────────────────────────
-const ACCENT = "#00e5ff";
-const POS = "#22c55e";
-const NEG = "#f43f5e";
-const BG = "#070b14";
-const CARD = "#0d1526";
-const BORDER = "#1e2d4a";
+const ACCENT = "var(--accent)";
+const POS = "var(--pos)";
+const NEG = "var(--neg)";
+const BG = "var(--bg)";
+const CARD = "var(--card)";
+const BORDER = "var(--border)";
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 
 const StatCard = ({ label, value, sub, color }) => (
 <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "18px 22px" , borderTop: `3px
     solid ${color || ACCENT}`, }}>
-    <div style={{ color: "#6b8cbb" , fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" ,
+    <div style={{ color: "var(--muted)" , fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" ,
         marginBottom: 6 }}>{label}</div>
     <div style={{ color: color || "#fff" , fontSize: 24, fontWeight: 800, fontFamily: "'DM Mono', monospace" }}>{value}
     </div>
-    {sub && <div style={{ color: "#4a6490" , fontSize: 12, marginTop: 4 }}>{sub}</div>}
+    {sub && <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 4 }}>{sub}</div>}
 </div>
 );
 
 const CustomTooltip = ({ active, payload, label }) => {
 if (!active || !payload?.length) return null;
 return (
-<div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" , fontSize:
+<div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" , fontSize:
     12 }}>
     <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{label}</div>
     {payload.map((p, i) => (
@@ -340,7 +172,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     padding: "9px 20px", borderRadius: 8, cursor: "pointer", fontWeight: 700,
     fontSize: 13, border: "none", letterSpacing: 0.5,
     background: view === id ? ACCENT : "transparent",
-    color: view === id ? "#000" : "#6b8cbb",
+    color: view === id ? "#000" : "var(--muted)",
     transition: "all 0.2s",
     });
 
@@ -352,11 +184,8 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     );
 
     return (
-    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "#e2eaf7" ,
+    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "var(--text)" ,
         padding: "0 0 60px" }}>
-        <link
-            href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;700&display=swap"
-            rel="stylesheet" />
 
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #0d1526 0%, #0a1020 100%)" , borderBottom: `1px solid
@@ -369,7 +198,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         <div>
                             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5 }}>Quant Strategy
                                 Dashboard</h1>
-                            <div style={{ color: "#4a6490" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 Performance
+                            <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 Performance
                                 Report · April – June 2026</div>
                         </div>
                     </div>
@@ -378,7 +207,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     <div style={{ background: totals.q1PnL>= 0 ? "rgba(34,197,94,0.15)" : "rgba(244,63,94,0.15)",
                         border: `1px solid ${totals.q1PnL >= 0 ? POS : NEG}`, borderRadius: 8, padding: "8px 16px",
                         textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#6b8cbb" , fontWeight: 700, letterSpacing: 2 }}>Q1 NET P&L
+                        <div style={{ fontSize: 10, color: "var(--muted)" , fontWeight: 700, letterSpacing: 2 }}>Q1 NET P&L
                         </div>
                         <div style={{ fontSize: 20, fontWeight: 800, color: totals.q1PnL>= 0 ? POS : NEG, fontFamily:
                             "'DM Mono', monospace" }}>{fmtSign(totals.q1PnL)}</div>
@@ -402,13 +231,13 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     <StatCard label="June P&L" value={fmtSign(totals.junPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.junPnL
                                         / (totals.totalFund * 1e7) : 0)} color={totals.junPnL>= 0 ? POS : NEG} />
                                         <StatCard label="Winners / Losers" value={`${totals.winners} /
-                                            ${totals.losers}`} sub={`${DATA.length} total accounts`} color="#a78bfa" />
+                                            ${totals.losers}`} sub={`${DATA.length} total accounts`} color="var(--violet)" />
             </div>
         </div>
 
         {/* Tabs */}
         <div style={{ padding: "16px 32px 0" , display: "flex" , gap: 6, borderBottom: `1px solid ${BORDER}`,
-            background: "#080e1c" }}>
+            background: "var(--panel)" }}>
             {tabs.map(t => (
             <button key={t.id} style={tabStyle(t.id)} onClick={()=> setView(t.id)}>{t.label}</button>
             ))}
@@ -422,14 +251,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Monthly P&L Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 32 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={trendData} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: "var(--muted)" , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -440,14 +269,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         </ResponsiveContainer>
                     </div>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <LineChart data={trendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: "var(--muted)" , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
+                                <YAxis tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -467,17 +296,17 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         padding: "6px 16px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                         fontSize: 12, fontWeight: 700,
                         background: selectedMonth === m.id ? ACCENT : CARD, color: selectedMonth === m.id ? "#000" :
-                        "#6b8cbb",
+                        "var(--muted)",
                         }}>{m.label}</button>
                     ))}
                     <div style={{ marginLeft: "auto" , display: "flex" , gap: 8 }}>
-                        <span style={{ color: "#6b8cbb" , fontSize: 12, alignSelf: "center" }}>Sort:</span>
+                        <span style={{ color: "var(--muted)" , fontSize: 12, alignSelf: "center" }}>Sort:</span>
                         {["roi", "pnl"].map(s => (
                         <button key={s} onClick={()=> setSortBy(s)} style={{
                             padding: "6px 14px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                             fontSize: 12,
-                            background: sortBy === s ? "#1e2d4a" : "transparent", color: sortBy === s ? ACCENT :
-                            "#6b8cbb",
+                            background: sortBy === s ? "var(--border)" : "transparent", color: sortBy === s ? ACCENT :
+                            "var(--muted)",
                             }}>{s.toUpperCase()}</button>
                         ))}
                     </div>
@@ -487,22 +316,22 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     <ResponsiveContainer width="100%" height={420}>
                         <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 100 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 11 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 11 }}
                                     axisLine={false} tickLine={false} width={100} />
                                 <Tooltip content={({ active, payload, label })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{d?.fullName}
                                         </div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>P&L: {fmt(d?.pnl)}</div>
                                         <div style={{ color: d?.roi>= 0 ? POS : NEG }}>ROI: {d?.roi?.toFixed(2)}%
                                         </div>
-                                        <div style={{ color: "#6b8cbb" }}>Fund: ₹{d?.fund} Cr</div>
+                                        <div style={{ color: "var(--muted)" }}>Fund: ₹{d?.fund} Cr</div>
                                     </div>
                                     );
                                     }} />
@@ -537,14 +366,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -564,14 +393,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmt(r.q1)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmt(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -586,15 +415,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name }))}
                             layout="vertical" barSize={14} margin={{ left: 110 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 10 }}
                                     axisLine={false} tickLine={false} width={110} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700 }}>{d?.fullName}</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
@@ -603,7 +432,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     </div>
                                     );
                                     }} />
-                                    <ReferenceLine x={0} stroke="#334155" />
+                                    <ReferenceLine x={0} stroke="var(--border)" />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
                                         {ranked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? POS : NEG} />)}
                                     </Bar>
@@ -620,25 +449,25 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
                                 {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI"].map(h => (
-                                <th key={h} style={{ padding: "12px 10px" , textAlign: "left" , color: "#6b8cbb" ,
+                                <th key={h} style={{ padding: "12px 10px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {ranked.map((r, i) => {
-                            const rowBg = i % 2 === 0 ? CARD : "#0d1423";
+                            const rowBg = i % 2 === 0 ? CARD : "var(--row-alt)";
                             return (
                             <tr key={r.code} style={{ background: rowBg, borderBottom: `1px solid ${BORDER}22` }}>
-                                <td style={{ padding: "10px" , color: "#4a6490" }}>{i + 1}</td>
+                                <td style={{ padding: "10px" , color: "var(--muted2)" }}>{i + 1}</td>
                                 <td style={{ padding: "10px" , color: ACCENT, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 11 }}>{r.code}</td>
                                 <td style={{ padding: "10px" , fontWeight: 600, whiteSpace: "nowrap" }}>{r.name}</td>
-                                <td style={{ padding: "10px" , color: "#6b8cbb" , fontSize: 11 }}>{r.strategy || "—"}
+                                <td style={{ padding: "10px" , color: "var(--muted)" , fontSize: 11 }}>{r.strategy || "—"}
                                 </td>
-                                <td style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" , color: "#94a3b8" }}>
+                                <td style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" , color: "var(--muted2)" }}>
                                     {r.fund}</td>
                                 {[
                                 [r.apr, r.apr_roi],
@@ -669,15 +498,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Strategy-Wise Q1 Performance")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
                             P&L — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 90
                                 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 10 }} tickFormatter={v=>
                                     fmt(v)} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "var(--axis)" , fontSize: 10 }}
                                         axisLine={false} tickLine={false} width={90} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -690,15 +519,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     </div>
 
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
                             % — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.filter(d=> d.fund > 0).slice(0, 14)} layout="vertical"
                                 barSize={18} margin={{ left: 90 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 10 }} tickFormatter={v=>
                                     `${v}%`} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "var(--axis)" , fontSize: 10 }}
                                         axisLine={false} tickLine={false} width={90} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -715,21 +544,21 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
                                 {["Strategy", "Accounts", "Fund (Cr)", "Q1 Net P&L", "Q1 ROI", "Status"].map(h => (
-                                <th key={h} style={{ padding: "12px 14px" , textAlign: "left" , color: "#6b8cbb" ,
+                                <th key={h} style={{ padding: "12px 14px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1 }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {strategyData.map((s, i) => (
-                            <tr key={s.strategy} style={{ background: i % 2===0 ? CARD : "#0d1423" , borderBottom: `1px
+                            <tr key={s.strategy} style={{ background: i % 2===0 ? CARD : "var(--row-alt)" , borderBottom: `1px
                                 solid ${BORDER}22` }}>
                                 <td style={{ padding: "10px 14px" , fontWeight: 700 }}>{s.strategy}</td>
-                                <td style={{ padding: "10px 14px" , color: "#94a3b8" }}>{s.count}</td>
+                                <td style={{ padding: "10px 14px" , color: "var(--muted2)" }}>{s.count}</td>
                                 <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" ,
-                                    color: "#94a3b8" }}>₹{s.fund.toFixed(1)}</td>
+                                    color: "var(--muted2)" }}>₹{s.fund.toFixed(1)}</td>
                                 <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" , color: s.pnl>=
                                     0 ? POS : NEG, fontWeight: 700 }}>{fmtSign(s.pnl)}</td>
                                 <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" , color: s.roi>=
@@ -774,7 +603,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     borderRadius: 10, padding: "12px 18px" , marginBottom: 24, display: "flex" , alignItems: "center" ,
                     gap: 10 }}>
                     <span style={{ fontSize: 18 }}>💰</span>
-                    <span style={{ color: "#fbbf24" , fontSize: 13 }}>
+                    <span style={{ color: "var(--gold)" , fontSize: 13 }}>
                         Cash / ETF / ATS accounts are shown <strong>separately</strong> here and excluded from all other
                         reports to avoid skewing F&O strategy numbers.
                     </span>
@@ -784,7 +613,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" , gap: 12,
                     marginBottom: 24 }}>
                     <StatCard label="Cash AUM" value={`₹${cashTotalFund.toFixed(1)}L`}
-                        sub={`₹${(cashTotalFund/100).toFixed(2)} Cr`} color="#fbbf24" />
+                        sub={`₹${(cashTotalFund/100).toFixed(2)} Cr`} color="var(--gold)" />
                     <StatCard label="Q1 Net P&L" value={fmtSign(cashQ1)} color={cashQ1>= 0 ? POS : NEG} />
                         <StatCard label="Q1 ROI" value={fmtROI(cashQ1ROI)} color={cashQ1ROI>= 0 ? POS : NEG} />
                             <StatCard label="April P&L" value={fmtSign(cashApr)} color={cashApr>= 0 ? POS : NEG} />
@@ -797,37 +626,37 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Cash / ETF Monthly Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={cashTrend} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: "var(--muted)" , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Net P&L" radius={[6,6,0,0]}>
-                                        {cashTrend.map((d, i) => <Cell key={i} fill={d.pnl>= 0 ? "#fbbf24" : NEG} />)}
+                                        {cashTrend.map((d, i) => <Cell key={i} fill={d.pnl>= 0 ? "var(--gold)" : NEG} />)}
                                     </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                        <div style={{ color: "var(--muted)" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <LineChart data={cashTrend}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: "var(--muted)" , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${v}%`}
+                                <YAxis tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> `${v}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
-                                    <Line dataKey="roi" name="ROI %" stroke="#fbbf24" strokeWidth={3} dot={{
-                                        fill: "#fbbf24" , r: 6 }} />
+                                    <Line dataKey="roi" name="ROI %" stroke="var(--gold)" strokeWidth={3} dot={{
+                                        fill: "var(--gold)" , r: 6 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -842,18 +671,18 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
                             strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 130 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 11 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 11 }}
                                     axisLine={false} tickLine={false} width={130} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
-                                        <div style={{ color: "#fbbf24" , fontWeight: 700 }}>{d?.fullName}</div>
-                                        <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{d?.strategy || "—"} ·
+                                        <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
+                                        <div style={{ color: "var(--muted)" , fontSize: 11 }}>{d?.strategy || "—"} ·
                                             ₹{d?.fund}Cr</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
                                         <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
@@ -863,7 +692,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     }} />
                                     <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0,4,4,0]}>
-                                        {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "#fbbf24" : NEG} />)}
+                                        {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "var(--gold)" : NEG} />)}
                                     </Bar>
                         </BarChart>
                     </ResponsiveContainer>
@@ -874,23 +703,23 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
                                 {["#","Code","Name","Strategy","Fund (Cr)","Apr P&L","May P&L","Jun P&L","Q1 P&L","Q1 ROI"].map(h => (
-                                <th key={h} style={{ padding:"12px 10px", textAlign:"left", color:"#6b8cbb",
+                                <th key={h} style={{ padding:"12px 10px", textAlign:"left", color:"var(--muted)",
                                     fontWeight:700, letterSpacing:1, whiteSpace:"nowrap" }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {cashRanked.map((r, i) => (
-                            <tr key={r.code} style={{ background: i % 2===0 ? CARD : "#0d1423" , borderBottom: `1px
+                            <tr key={r.code} style={{ background: i % 2===0 ? CARD : "var(--row-alt)" , borderBottom: `1px
                                 solid ${BORDER}22` }}>
-                                <td style={{ padding:"10px", color:"#4a6490" }}>{i+1}</td>
-                                <td style={{ padding:"10px", color:"#fbbf24", fontFamily:"'DM Mono',monospace",
+                                <td style={{ padding:"10px", color:"var(--muted2)" }}>{i+1}</td>
+                                <td style={{ padding:"10px", color:"var(--gold)", fontFamily:"'DM Mono',monospace",
                                     fontSize:11 }}>{r.code}</td>
                                 <td style={{ padding:"10px", fontWeight:600 }}>{r.name}</td>
-                                <td style={{ padding:"10px", color:"#6b8cbb", fontSize:11 }}>{r.strategy || "—"}</td>
-                                <td style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color:"#94a3b8" }}>
+                                <td style={{ padding:"10px", color:"var(--muted)", fontSize:11 }}>{r.strategy || "—"}</td>
+                                <td style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color:"var(--muted2)" }}>
                                     {r.fund}</td>
                                 {[r.apr, r.may, r.jun, r.q1].map((v, j) => (
                                 <td key={j} style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color: v>= 0 ?
@@ -909,16 +738,11 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
         </div>
 
-        <div style={{ textAlign: "center" , color: "#1e2d4a" , fontSize: 11, marginTop: 20 }}>
+        <div style={{ textAlign: "center" , color: "var(--border)" , fontSize: 11, marginTop: 20 }}>
             Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q2–Q4 pending
         </div>
     </div>
     );
     }
 
-// Mount the Dashboard
-const rootEl = document.getElementById('root');
-ReactDOM.createRoot(rootEl).render(React.createElement(Dashboard));
-  </script>
-</body>
-</html>
+export default Dashboard

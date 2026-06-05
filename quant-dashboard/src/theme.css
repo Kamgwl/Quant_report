@@ -1,0 +1,102 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Theme tokens. All component colors reference these CSS variables, so flipping
+   `data-theme` on <html> re-themes the entire dashboard (charts included).
+   ────────────────────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme='dark'] {
+  --bg: #070b14;
+  --panel: #0a1020;
+  --card: #0d1526;
+  --row-alt: #0d1423;
+  --border: #1e2d4a;
+  --text: #e2eaf7;
+  --muted: #6b8cbb;
+  --muted2: #4a6490;
+  --axis: #b0c4de;
+  --accent: #00e5ff;
+  --pos: #22c55e;
+  --neg: #f43f5e;
+  --gold: #fbbf24;
+  --violet: #a78bfa;
+  --tooltip-bg: #111d33;
+  --header-bg: linear-gradient(135deg, #0d1526 0%, #0a1020 100%);
+  --scroll-thumb: #1e2d4a;
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --bg: #eef2f8;
+  --panel: #ffffff;
+  --card: #ffffff;
+  --row-alt: #f3f6fb;
+  --border: #d5deec;
+  --text: #0f1b2d;
+  --muted: #56688a;
+  --muted2: #8493ad;
+  --axis: #3a4a63;
+  --accent: #0091b3;
+  --pos: #16a34a;
+  --neg: #e11d48;
+  --gold: #b7791f;
+  --violet: #7c5cff;
+  --tooltip-bg: #ffffff;
+  --header-bg: linear-gradient(135deg, #ffffff 0%, #eaf0f8 100%);
+  --scroll-thumb: #c3cee0;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: var(--bg);
+}
+
+body {
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+/* Floating light/dark switch */
+.theme-toggle {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}

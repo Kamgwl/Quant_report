@@ -1,0 +1,7 @@
+node_modules/
+dist/
+quant-dashboard/node_modules/
+quant-dashboard/dist/
+~$*.xlsx
+.idea/
+.vscode/
