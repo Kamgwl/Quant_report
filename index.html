@@ -19,6 +19,11 @@
   <!-- Babel standalone (JSX transpiler) -->
   <script src="vendor/babel.min.js"></script>
 
+  <!-- ExcelJS for xlsx generation with styles -->
+  <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <!-- FileSaver for triggering download in browser -->
+  <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #070b14; color: #e2eaf7; font-family: 'DM Sans', sans-serif; }
@@ -196,10 +201,200 @@ return (
 };
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
+const EXPORT_COLUMNS = [
+  { key: "code", label: "Account Code", align: "left" },
+  { key: "name", label: "Account Name", align: "left" },
+  { key: "strategy", label: "Strategy", align: "left" },
+  { key: "fund", label: "Fund (Cr)", align: "right", numFmt: "₹#,##0.00 \"Cr\"" },
+  { key: "apr", label: "April P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "apr_roi", label: "April ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "may", label: "May P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "may_roi", label: "May ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "jun", label: "June P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "jun_roi", label: "June ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "q1", label: "Q1 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "q1_roi", label: "Q1 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "ann_pnl", label: "Ann. P&L (Projected)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "ann_roi", label: "Ann. ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+];
+
 function Dashboard() {
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
+
+const [showExportModal, setShowExportModal] = useState(false);
+const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
+const [selectedCols, setSelectedCols] = useState({
+  code: true,
+  name: true,
+  strategy: true,
+  fund: true,
+  apr: true,
+  apr_roi: true,
+  may: true,
+  may_roi: true,
+  jun: true,
+  jun_roi: true,
+  q1: true,
+  q1_roi: true,
+  ann_pnl: true,
+  ann_roi: true,
+});
+
+const handleExportExcel = async () => {
+  try {
+    let exportData = [];
+    if (exportScope === "all") {
+      exportData = DATA_ALL;
+    } else if (exportScope === "fo") {
+      exportData = DATA;
+    } else if (exportScope === "cash") {
+      exportData = DATA_CASH;
+    }
+
+    const ExcelJS = window.ExcelJS;
+    const saveAs = window.saveAs || (window.FileSaver && window.FileSaver.saveAs);
+    if (!ExcelJS) {
+      alert("ExcelJS library not loaded. Please check your internet connection.");
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Quant Q1 FY2026-27");
+
+    const activeCols = EXPORT_COLUMNS.filter(c => selectedCols[c.key]);
+
+    if (activeCols.length === 0) {
+      alert("Please select at least one column to export.");
+      return;
+    }
+
+    worksheet.columns = activeCols.map(col => ({
+      header: col.label,
+      key: col.key,
+      width: 15,
+      style: {
+        font: { name: 'Segoe UI', size: 10 },
+        alignment: { vertical: 'middle', horizontal: col.align }
+      }
+    }));
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0D1526' }
+      };
+      cell.font = {
+        name: 'Segoe UI',
+        size: 11,
+        bold: true,
+        color: { argb: 'FF00E5FF' }
+      };
+      cell.border = {
+        bottom: { style: 'medium', color: { argb: 'FF1E2D4A' } }
+      };
+      const colKey = cell.column.key;
+      const colDef = activeCols.find(c => c.key === colKey);
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: colDef ? colDef.align : 'center'
+      };
+    });
+
+    exportData.forEach((row) => {
+      const rowData = {};
+      activeCols.forEach(col => {
+        rowData[col.key] = row[col.key] ?? null;
+      });
+
+      const addedRow = worksheet.addRow(rowData);
+      addedRow.height = 20;
+
+      addedRow.eachCell((cell, colIndex) => {
+        const colDef = activeCols[colIndex - 1];
+        const val = row[colDef.key];
+
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+        };
+
+        if (colDef.numFmt) {
+          cell.numFmt = colDef.numFmt;
+        }
+
+        if (colDef.colorCode && typeof val === 'number') {
+          if (val > 0) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE6F4EA' }
+            };
+            cell.font = {
+              name: 'Segoe UI',
+              size: 10,
+              color: { argb: 'FF137333' },
+              bold: true
+            };
+          } else if (val < 0) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFCE8E6' }
+            };
+            cell.font = {
+              name: 'Segoe UI',
+              size: 10,
+              color: { argb: 'FFC5221F' },
+              bold: true
+            };
+          }
+        }
+      });
+    });
+
+    worksheet.columns.forEach(column => {
+      let maxLen = 12;
+      column.eachCell({ includeEmpty: true }, cell => {
+        let valStr = '';
+        if (cell.value !== null && cell.value !== undefined) {
+          if (typeof cell.value === 'object' && cell.value.text) {
+            valStr = cell.value.text.toString();
+          } else {
+            valStr = cell.value.toString();
+          }
+        }
+        if (column.key && column.key.endsWith('_roi')) {
+          valStr += '% +';
+        } else if (column.key === 'fund') {
+          valStr += ' Cr ₹';
+        } else if (['apr', 'may', 'jun', 'q1', 'ann_pnl'].includes(column.key)) {
+          valStr = '₹+' + valStr + ',000';
+        }
+        
+        if (valStr.length > maxLen) {
+          maxLen = valStr.length;
+        }
+      });
+      column.width = Math.min(maxLen + 4, 30);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    saveAs(blob, `Quant_Q1_FY2026-27_${exportScope.toUpperCase()}.xlsx`);
+
+    setShowExportModal(false);
+  } catch (error) {
+    console.error("Export failed", error);
+    alert("An error occurred during export: " + error.message);
+  }
+};
 
 // ── Summary stats ──
 const totals = useMemo(() => {
@@ -308,6 +503,38 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     </div>
                 </div>
                 <div style={{ display: "flex" , gap: 12, alignItems: "center" }}>
+                    <button
+                        onClick={() => setShowExportModal(true)}
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            background: "rgba(0, 229, 255, 0.1)",
+                            border: `1px solid ${ACCENT}`,
+                            color: ACCENT,
+                            borderRadius: 8,
+                            padding: "9px 16px",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            transition: "all 0.2s ease-in-out",
+                            boxShadow: "0 0 10px rgba(0, 229, 255, 0.05)",
+                            outline: "none"
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.background = ACCENT;
+                            e.currentTarget.style.color = "#000";
+                            e.currentTarget.style.boxShadow = `0 0 15px ${ACCENT}66`;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)";
+                            e.currentTarget.style.color = ACCENT;
+                            e.currentTarget.style.boxShadow = "0 0 10px rgba(0, 229, 255, 0.05)";
+                        }}
+                    >
+                        <span style={{ fontSize: 14 }}>📥</span> Export Excel
+                    </button>
+
                     <div style={{ background: totals.q1PnL>= 0 ? "rgba(34,197,94,0.15)" : "rgba(244,63,94,0.15)",
                         border: `1px solid ${totals.q1PnL >= 0 ? POS : NEG}`, borderRadius: 8, padding: "8px 16px",
                         textAlign: "center" }}>
@@ -837,6 +1064,244 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
             })()}
 
         </div>
+
+        {/* Export Modal overlay */}
+        {showExportModal && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(4, 7, 13, 0.85)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 1000,
+            transition: "all 0.3s ease",
+          }}>
+            <div style={{
+              background: CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 16,
+              padding: 28,
+              width: 540,
+              maxWidth: "92%",
+              boxShadow: "0 20px 45px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 229, 255, 0.05)",
+              animation: "modalFadeIn 0.2s ease-out",
+            }}>
+              <style>{`
+                @keyframes modalFadeIn {
+                  from { transform: scale(0.95); opacity: 0; }
+                  to { transform: scale(1); opacity: 1; }
+                }
+              `}</style>
+              
+              {/* Modal Title */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>📥 Export Performance to Excel</h3>
+                  <p style={{ color: "#6b8cbb", fontSize: 11, marginTop: 4 }}>Select the account scope and specific columns to include in the spreadsheet.</p>
+                </div>
+                <button 
+                  onClick={() => setShowExportModal(false)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#6b8cbb",
+                    fontSize: 24,
+                    cursor: "pointer",
+                    padding: 4,
+                    lineHeight: 1,
+                    outline: "none"
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = ACCENT}
+                  onMouseLeave={(e) => e.currentTarget.style.color = "#6b8cbb"}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div style={{ borderBottom: `1px solid ${BORDER}`, marginBottom: 20 }} />
+
+              {/* Scope Section */}
+              <div style={{ marginBottom: 22 }}>
+                <label style={{ display: "block", color: ACCENT, fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>1. Select Account Scope</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {[
+                    { id: "all", label: "All Accounts", count: DATA_ALL.length },
+                    { id: "fo", label: "F&O Only", count: DATA.length },
+                    { id: "cash", label: "Cash & ETF Only", count: DATA_CASH.length },
+                  ].map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => setExportScope(opt.id)}
+                      style={{
+                        background: exportScope === opt.id ? "rgba(0, 229, 255, 0.12)" : "#070b14",
+                        border: `1px solid ${exportScope === opt.id ? ACCENT : BORDER}`,
+                        color: exportScope === opt.id ? ACCENT : "#6b8cbb",
+                        borderRadius: 8,
+                        padding: "10px 8px",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        fontSize: 12,
+                        transition: "all 0.15s ease",
+                        textAlign: "center",
+                        outline: "none"
+                      }}
+                      onMouseEnter={(e) => {
+                        if (exportScope !== opt.id) e.currentTarget.style.borderColor = "#6b8cbb";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (exportScope !== opt.id) e.currentTarget.style.borderColor = BORDER;
+                      }}
+                    >
+                      <div style={{ fontSize: 11 }}>{opt.label}</div>
+                      <div style={{ fontSize: 9, opacity: 0.7, marginTop: 2 }}>({opt.count} rows)</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Columns Selection */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <label style={{ color: ACCENT, fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase" }}>2. Select Attributes</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        const updated = {};
+                        EXPORT_COLUMNS.forEach(c => updated[c.key] = true);
+                        setSelectedCols(updated);
+                      }}
+                      style={{ background: "transparent", border: "none", color: ACCENT, fontSize: 11, cursor: "pointer", fontWeight: 700, outline: "none" }}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: "#1e2d4a" }}>|</span>
+                    <button
+                      onClick={() => {
+                        const updated = {};
+                        EXPORT_COLUMNS.forEach(c => updated[c.key] = c.key === "code");
+                        setSelectedCols(updated);
+                      }}
+                      style={{ background: "transparent", border: "none", color: "#6b8cbb", fontSize: 11, cursor: "pointer", fontWeight: 700, outline: "none" }}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: "#070b14",
+                  border: `1px solid ${BORDER}`,
+                  borderRadius: 8,
+                  padding: 16,
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px 16px",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                }}>
+                  {EXPORT_COLUMNS.map(col => (
+                    <label
+                      key={col.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 12,
+                        cursor: col.key === "code" ? "not-allowed" : "pointer",
+                        color: col.key === "code" ? "#4a6490" : "#e2eaf7",
+                        fontWeight: selectedCols[col.key] ? 600 : 400,
+                        opacity: col.key === "code" ? 0.7 : 1,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCols[col.key]}
+                        disabled={col.key === "code"}
+                        onChange={(e) => {
+                          if (col.key !== "code") {
+                            setSelectedCols({
+                              ...selectedCols,
+                              [col.key]: e.target.checked
+                            });
+                          }
+                        }}
+                        style={{
+                          accentColor: ACCENT,
+                          cursor: col.key === "code" ? "not-allowed" : "pointer",
+                          width: 14,
+                          height: 14,
+                        }}
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderBottom: `1px solid ${BORDER}`, marginBottom: 22 }} />
+
+              {/* Footer / Actions */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${BORDER}`,
+                    color: "#6b8cbb",
+                    borderRadius: 8,
+                    padding: "10px 20px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    outline: "none"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#6b8cbb";
+                    e.currentTarget.style.color = "#fff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = BORDER;
+                    e.currentTarget.style.color = "#6b8cbb";
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  style={{
+                    background: ACCENT,
+                    border: "none",
+                    color: "#000",
+                    borderRadius: 8,
+                    padding: "10px 24px",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    boxShadow: `0 4px 14px ${ACCENT}33`,
+                    outline: "none"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow = `0 6px 20px ${ACCENT}55`;
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow = `0 4px 14px ${ACCENT}33`;
+                    e.currentTarget.style.transform = "translateY(0)";
+                  }}
+                >
+                  Confirm & Export
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ textAlign: "center" , color: "#1e2d4a" , fontSize: 11, marginTop: 20 }}>
             Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q2–Q4 pending
