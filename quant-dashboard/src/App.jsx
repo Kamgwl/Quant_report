@@ -23,7 +23,7 @@ export default function App() {
       >
         {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
       </button>
-      <Dashboard />
+      <Dashboard theme={theme} />
     </>
   )
 }
