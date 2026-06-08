@@ -767,7 +767,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                 }} />
                             <ReferenceLine x={0} stroke="var(--border)" />
                             <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
-                                {cashRanked.map((d, i) => <Cell key={i} fill={d.pnl>= 0 ? "var(--gold)" : NEG} />)}
+                                {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "var(--gold)" : NEG} />)}
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
