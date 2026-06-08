@@ -335,6 +335,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     const top5 = ranked.slice(0, 5);
     const bot5 = ranked.slice(-5).reverse();
 
+    // ── Best/Worst performers Q1 (Cash) ──
+    const cashRanked = useMemo(() => [...DATA_CASH]
+    .filter(r => r.q1 !== 0)
+    .sort((a, b) => b.q1_roi - a.q1_roi), []);
+
+    const cashTop5 = cashRanked.slice(0, 5);
+    const cashBot5 = cashRanked.slice(-5).reverse();
+
     // ── Strategy summary ──
     const strategyData = useMemo(() => {
     const map = {};
@@ -668,6 +676,102 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
+
+                <div style={{ height: 40 }} />
+
+                {sectionHead("Q1 2026–27 Consolidated Cash & ETF Report")}
+
+                {/* Best vs Worst (Cash) */}
+                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
+                    {/* Top Cash Performers */}
+                    <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, border: `1px solid var(--border)` }}>
+                        <div style={{ color: "var(--gold)", fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            🏆 TOP PERFORMERS — Q1 ROI (CASH & ETF)</div>
+                        {cashTop5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashTop5.length - 1 ? `1px solid var(--border)`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: "var(--gold)",
+                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+
+                    {/* Bottom Cash Performers */}
+                    <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, border: `1px solid var(--border)` }}>
+                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            ⚠️ BOTTOM PERFORMERS — Q1 ROI (CASH & ETF)</div>
+                        {cashBot5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashBot5.length - 1 ? `1px solid var(--border)`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
+                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: r.q1_roi >= 0 ? POS : NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Full Cash Q1 Bar Chart */}
+                {sectionHead("Full Q1 P&L & ROI — Best to Worst (Cash & ETF Only)")}
+                <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, border: `1px solid var(--border)` }}>
+                    <ResponsiveContainer width="100%" height={Math.max(250, cashRanked.length * 35)}>
+                        <BarChart data={cashRanked.map(r=> ({ name: r.name,
+                            pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name, strategy: r.strategy }))}
+                            layout="vertical" barSize={16} margin={{ left: 165 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                            <XAxis type="number" tick={{ fill: "var(--muted)" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" tick={{ fill: "var(--axis)" , fontSize: 12 }}
+                                interval={0} width={165} axisLine={false} tickLine={false} />
+                            <Tooltip content={({ active, payload })=> {
+                                if (!active || !payload?.length) return null;
+                                const d = payload[0]?.payload;
+                                return (
+                                <div style={{ background: "var(--tooltip-bg)" , border: `1px solid var(--border)`, borderRadius:
+                                    8, padding: "10px 14px" , fontSize: 12 }}>
+                                    <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
+                                    <div style={{ color: "var(--muted)" , fontSize: 11 }}>{d?.strategy || "—"} ·
+                                        ₹{d?.fund}Cr</div>
+                                    <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
+                                    <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
+                                    </div>
+                                </div>
+                                );
+                                }} />
+                            <ReferenceLine x={0} stroke="var(--border)" />
+                            <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
+                                {cashRanked.map((d, i) => <Cell key={i} fill={d.pnl>= 0 ? "var(--gold)" : NEG} />)}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
             </div>
             )}
 
@@ -810,7 +914,6 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
             {/* ── CASH / ETF / ATS ── */}
             {view === "cash" && (() => {
-            const cashRanked = [...DATA_CASH].filter(r => r.q1 !== 0).sort((a, b) => b.q1_roi - a.q1_roi);
             const cashTotalFund = DATA_CASH.reduce((s, r) => s + r.fund, 0);
             const cashApr = DATA_CASH.reduce((s, r) => s + r.apr, 0);
             const cashMay = DATA_CASH.reduce((s, r) => s + r.may, 0);
