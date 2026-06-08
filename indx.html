@@ -389,7 +389,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
     // ── Best/Worst performers Q1 ──
     const ranked = useMemo(() => [...DATA]
-    .filter(r => r.q1 !== 0)
+    .filter(r => !r.isCash && r.q1 !== 0)
     .sort((a, b) => b.q1_roi - a.q1_roi), []);
 
     const top5 = ranked.slice(0, 5);
@@ -703,7 +703,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 </div>
 
                 {/* Full Q1 bar */}
-                {sectionHead("Full Q1 P&L & Projected Annual ROI — Best to Worst (All Users)")}
+                {sectionHead("Full Q1 P&L & Projected Annual ROI — Best to Worst (F&O Only)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                     <ResponsiveContainer width="100%" height={Math.max(500, ranked.length * 22)}>
                         <BarChart data={ranked.map(r=> ({ name: r.name.length > 14 ? r.name.slice(0, 14) + "…" : r.name,
@@ -979,7 +979,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
                 {/* Full annual ranking bar */}
                 <div style={{marginBottom:8}}>
-                    {sectionHead("All Users — Projected Annual ROI (Best → Worst)")}
+                    {sectionHead("F&O Only — Projected Annual ROI (Best → Worst)")}
                 </div>
                 <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`,
                     marginBottom:28}}>
