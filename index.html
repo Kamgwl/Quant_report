@@ -787,7 +787,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
-                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
                             </div>
@@ -814,7 +814,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
                                     <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
-                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
                             </div>
