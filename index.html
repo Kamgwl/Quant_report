@@ -314,8 +314,8 @@ const handleExportExcel = async () => {
       const addedRow = worksheet.addRow(rowData);
       addedRow.height = 20;
 
-      addedRow.eachCell((cell, colIndex) => {
-        const colDef = activeCols[colIndex - 1];
+      activeCols.forEach((colDef, idx) => {
+        const cell = addedRow.getCell(idx + 1);
         const val = row[colDef.key];
 
         cell.border = {
