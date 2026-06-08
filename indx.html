@@ -175,7 +175,7 @@ const EXPORT_COLUMNS = [
   { key: "ann_roi", label: "Ann. ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
 ];
 
-export default function Dashboard() {
+export default function Dashboard({ theme = "dark" }) {
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
@@ -237,21 +237,26 @@ const handleExportExcel = async () => {
 
     const headerRow = worksheet.getRow(1);
     headerRow.height = 28;
+    const isDark = theme === "dark";
+    const headerBg = isDark ? "FF0D1526" : "FFF3F6FB";
+    const headerFg = isDark ? "FF00E5FF" : "FF0091B3";
+    const headerBorderColor = isDark ? "FF1E2D4A" : "FFD5DEEC";
+
     activeCols.forEach((colDef, idx) => {
       const cell = headerRow.getCell(idx + 1);
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: 'FF0D1526' }
+        fgColor: { argb: headerBg }
       };
       cell.font = {
         name: 'Segoe UI',
         size: 11,
         bold: true,
-        color: { argb: 'FF00E5FF' }
+        color: { argb: headerFg }
       };
       cell.border = {
-        bottom: { style: 'medium', color: { argb: 'FF1E2D4A' } }
+        bottom: { style: 'medium', color: { argb: headerBorderColor } }
       };
       cell.alignment = {
         vertical: 'middle',

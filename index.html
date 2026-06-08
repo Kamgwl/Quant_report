@@ -25,11 +25,77 @@
   <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <style>
+    :root, [data-theme='dark'] {
+      --bg: #070b14;
+      --panel: #0a1020;
+      --card: #0d1526;
+      --row-alt: #0d1423;
+      --border: #1e2d4a;
+      --text: #e2eaf7;
+      --muted: #6b8cbb;
+      --muted2: #4a6490;
+      --axis: #b0c4de;
+      --accent: #00e5ff;
+      --pos: #22c55e;
+      --neg: #f43f5e;
+      --gold: #fbbf24;
+      --violet: #a78bfa;
+      --tooltip-bg: #111d33;
+      --header-bg: linear-gradient(135deg, #0d1526 0%, #0a1020 100%);
+      --scroll-thumb: #1e2d4a;
+      color-scheme: dark;
+    }
+    [data-theme='light'] {
+      --bg: #eef2f8;
+      --panel: #ffffff;
+      --card: #ffffff;
+      --row-alt: #f3f6fb;
+      --border: #d5deec;
+      --text: #0f1b2d;
+      --muted: #56688a;
+      --muted2: #8493ad;
+      --axis: #3a4a63;
+      --accent: #0091b3;
+      --pos: #16a34a;
+      --neg: #e11d48;
+      --gold: #b7791f;
+      --violet: #7c5cff;
+      --tooltip-bg: #ffffff;
+      --header-bg: linear-gradient(135deg, #ffffff 0%, #eaf0f8 100%);
+      --scroll-thumb: #c3cee0;
+      color-scheme: light;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #070b14; color: #e2eaf7; font-family: 'DM Sans', sans-serif; }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; transition: background 0.25s ease, color 0.25s ease; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0d1526; }
-    ::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: var(--panel); }
+    ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
+
+    .theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 20px;
+      z-index: 100;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      outline: none;
+    }
+    .theme-toggle:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -37,7 +103,7 @@
 
   <script type="text/babel" data-presets="react">
 // Destructure hooks from React global
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 
 // Destructure Recharts components from Recharts global
 const {
@@ -165,12 +231,12 @@ const fmtROI = (n) => `${(n*100).toFixed(2)}%`;
 const fmtSign = (n) => n >= 0 ? `+${fmt(n)}` : fmt(n);
 
 // ── COLORS ─────────────────────────────────────────────────────────────────────
-const ACCENT = "#00e5ff";
-const POS = "#22c55e";
-const NEG = "#f43f5e";
-const BG = "#070b14";
-const CARD = "#0d1526";
-const BORDER = "#1e2d4a";
+const ACCENT = "var(--accent)";
+const POS = "var(--pos)";
+const NEG = "var(--neg)";
+const BG = "var(--bg)";
+const CARD = "var(--card)";
+const BORDER = "var(--border)";
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 
@@ -219,6 +285,13 @@ const EXPORT_COLUMNS = [
 ];
 
 function Dashboard() {
+const [theme, setTheme] = useState(() => localStorage.getItem("qd-theme") || "dark");
+
+useEffect(() => {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("qd-theme", theme);
+}, [theme]);
+
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
@@ -282,21 +355,26 @@ const handleExportExcel = async () => {
 
     const headerRow = worksheet.getRow(1);
     headerRow.height = 28;
+    const isDark = theme === "dark";
+    const headerBg = isDark ? "FF0D1526" : "FFF3F6FB";
+    const headerFg = isDark ? "FF00E5FF" : "FF0091B3";
+    const headerBorderColor = isDark ? "FF1E2D4A" : "FFD5DEEC";
+
     activeCols.forEach((colDef, idx) => {
       const cell = headerRow.getCell(idx + 1);
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
-        fgColor: { argb: 'FF0D1526' }
+        fgColor: { argb: headerBg }
       };
       cell.font = {
         name: 'Segoe UI',
         size: 11,
         bold: true,
-        color: { argb: 'FF00E5FF' }
+        color: { argb: headerFg }
       };
       cell.border = {
-        bottom: { style: 'medium', color: { argb: 'FF1E2D4A' } }
+        bottom: { style: 'medium', color: { argb: headerBorderColor } }
       };
       cell.alignment = {
         vertical: 'middle',
@@ -480,11 +558,20 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     );
 
     return (
-    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "#e2eaf7" ,
+    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "var(--text)" ,
         padding: "0 0 60px" }}>
         <link
             href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;700&display=swap"
             rel="stylesheet" />
+
+        <button
+            className="theme-toggle"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            aria-label="Toggle light / dark theme"
+            title="Toggle light / dark theme"
+        >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+        </button>
 
         {/* Header */}
         <div style={{ background: "linear-gradient(135deg, #0d1526 0%, #0a1020 100%)" , borderBottom: `1px solid
