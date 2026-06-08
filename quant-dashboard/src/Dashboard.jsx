@@ -178,7 +178,8 @@ const handleExportExcel = async () => {
 
     const headerRow = worksheet.getRow(1);
     headerRow.height = 28;
-    headerRow.eachCell((cell) => {
+    activeCols.forEach((colDef, idx) => {
+      const cell = headerRow.getCell(idx + 1);
       cell.fill = {
         type: 'pattern',
         pattern: 'solid',
@@ -193,11 +194,9 @@ const handleExportExcel = async () => {
       cell.border = {
         bottom: { style: 'medium', color: { argb: 'FF1E2D4A' } }
       };
-      const colKey = cell.column.key;
-      const colDef = activeCols.find(c => c.key === colKey);
       cell.alignment = {
         vertical: 'middle',
-        horizontal: colDef ? colDef.align : 'center'
+        horizontal: colDef.align
       };
     });
 
@@ -255,7 +254,8 @@ const handleExportExcel = async () => {
       });
     });
 
-    worksheet.columns.forEach(column => {
+    activeCols.forEach((colDef, idx) => {
+      const column = worksheet.getColumn(idx + 1);
       let maxLen = 12;
       column.eachCell({ includeEmpty: true }, cell => {
         let valStr = '';
@@ -266,11 +266,11 @@ const handleExportExcel = async () => {
             valStr = cell.value.toString();
           }
         }
-        if (column.key && column.key.endsWith('_roi')) {
+        if (colDef.key && colDef.key.endsWith('_roi')) {
           valStr += '% +';
-        } else if (column.key === 'fund') {
+        } else if (colDef.key === 'fund') {
           valStr += ' Cr ₹';
-        } else if (['apr', 'may', 'jun', 'q1', 'ann_pnl'].includes(column.key)) {
+        } else if (['apr', 'may', 'jun', 'q1', 'ann_pnl'].includes(colDef.key)) {
           valStr = '₹+' + valStr + ',000';
         }
         
