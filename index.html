@@ -739,7 +739,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
                                     interval={0} width={160} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload, label })=> {
                                     if (!active || !payload?.length) return null;
@@ -786,7 +786,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
                                     <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
@@ -813,7 +813,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
                                     <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
@@ -838,7 +838,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
                                     interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
@@ -925,9 +925,9 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 120
                                 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=>
                                     fmt(v)} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 12 }}
                                         interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -946,9 +946,9 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             <BarChart data={strategyData.filter(d=> d.fund > 0).slice(0, 14)} layout="vertical"
                                 barSize={18} margin={{ left: 120 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=>
                                     `${v}%`} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 12 }}
                                         interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -1090,7 +1090,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
                                     interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
