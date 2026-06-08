@@ -252,7 +252,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 if (!active || !payload?.length) return null;
 return (
 <div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" , fontSize:
-    12 }}>
+    12, color: "var(--axis)" }}>
     <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{label}</div>
     {payload.map((p, i) => (
     <div key={i} style={{ color: p.value>= 0 ? POS : NEG }}>
@@ -288,6 +288,12 @@ useEffect(() => {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem("qd-theme", theme);
 }, [theme]);
+
+const MUTED_C  = theme === 'dark' ? '#6b8cbb' : '#56688a';
+const AXIS_C   = theme === 'dark' ? '#b0c4de' : '#3a4a63';
+const MUTED2_C = theme === 'dark' ? '#4a6490' : '#8493ad';
+const TIP_BG   = theme === 'dark' ? '#111d33' : '#ffffff';
+const TIP_BORDER = theme === 'dark' ? '#1e2d4a' : '#d5deec';
 
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
@@ -666,14 +672,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Monthly P&L Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 32 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={trendData} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -684,14 +690,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         </ResponsiveContainer>
                     </div>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <LineChart data={trendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -711,17 +717,17 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         padding: "6px 16px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                         fontSize: 12, fontWeight: 700,
                         background: selectedMonth === m.id ? ACCENT : CARD, color: selectedMonth === m.id ? "#000" :
-                        "#6b8cbb",
+                        MUTED_C,
                         }}>{m.label}</button>
                     ))}
                     <div style={{ marginLeft: "auto" , display: "flex" , gap: 8 }}>
-                        <span style={{ color: "#6b8cbb" , fontSize: 12, alignSelf: "center" }}>Sort:</span>
+                        <span style={{ color: MUTED_C , fontSize: 12, alignSelf: "center" }}>Sort:</span>
                         {["roi", "pnl"].map(s => (
                         <button key={s} onClick={()=> setSortBy(s)} style={{
                             padding: "6px 14px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                             fontSize: 12,
-                            background: sortBy === s ? "#1e2d4a" : "transparent", color: sortBy === s ? ACCENT :
-                            "#6b8cbb",
+                            background: sortBy === s ? BORDER : "transparent", color: sortBy === s ? ACCENT :
+                            MUTED_C,
                             }}>{s.toUpperCase()}</button>
                         ))}
                     </div>
@@ -731,22 +737,22 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     <ResponsiveContainer width="100%" height={420}>
                         <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 160 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
                                     interval={0} width={160} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload, label })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{d?.fullName}
                                         </div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>P&L: {fmt(d?.pnl)}</div>
                                         <div style={{ color: d?.roi>= 0 ? POS : NEG }}>ROI: {d?.roi?.toFixed(2)}%
                                         </div>
-                                        <div style={{ color: "#6b8cbb" }}>Fund: ₹{d?.fund} Cr</div>
+                                        <div style={{ color: MUTED_C }}>Fund: ₹{d?.fund} Cr</div>
                                     </div>
                                     );
                                     }} />
@@ -780,15 +786,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmtSign(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -807,15 +813,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmt(r.q1)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmt(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -830,15 +836,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                             pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name }))}
                             layout="vertical" barSize={14} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
                                     interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700 }}>{d?.fullName}</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
@@ -847,7 +853,7 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                                     </div>
                                     );
                                     }} />
-                                    <ReferenceLine x={0} stroke="#334155" />
+                                    <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
                                         {ranked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? POS : NEG} />)}
                                     </Bar>
@@ -913,15 +919,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Strategy-Wise Q1 Performance")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
                             P&L — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 120
                                 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 10 }} tickFormatter={v=>
                                     fmt(v)} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 10 }}
                                         interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -934,15 +940,15 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                     </div>
 
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
                             % — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.filter(d=> d.fund > 0).slice(0, 14)} layout="vertical"
                                 barSize={18} margin={{ left: 120 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 10 }} tickFormatter={v=>
                                     `${v}%`} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 10 }}
                                         interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
@@ -1038,14 +1044,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 {sectionHead("Cash / ETF Monthly Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={cashTrend} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -1056,14 +1062,14 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         </ResponsiveContainer>
                     </div>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <LineChart data={cashTrend}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -1082,18 +1088,18 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                         <BarChart data={cashRanked.map(r=> ({ name: r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
                             strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 10 }}
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 10 }}
                                     interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
-                                        <div style={{ color: "#fbbf24" , fontWeight: 700 }}>{d?.fullName}</div>
-                                        <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{d?.strategy || "—"} ·
+                                        <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
+                                        <div style={{ color: MUTED_C , fontSize: 11 }}>{d?.strategy || "—"} ·
                                             ₹{d?.fund}Cr</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
                                         <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
