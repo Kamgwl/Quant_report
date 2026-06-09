@@ -332,8 +332,19 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
     .filter(r => !r.isCash && r.q1 !== 0)
     .sort((a, b) => b.q1_roi - a.q1_roi), []);
 
-    const top5 = ranked.slice(0, 5);
-    const bot5 = ranked.slice(-5).reverse();
+    const top5 = useMemo(() => ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(0, 5), [ranked]);
+
+    const bot5 = useMemo(() => ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(-5).reverse(), [ranked]);
 
     // ── Best/Worst performers Q1 (Cash) ──
     const cashRanked = useMemo(() => [...DATA_CASH]
@@ -586,6 +597,63 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
             {view === "quarterly" && (
             <div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
+
+                {/* Best vs Worst */}
+                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
+                    {/* Top 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            🏆 TOP 5 PERFORMERS — Q1 ROI</div>
+                        {top5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < top5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: POS,
+                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+
+                    {/* Bot 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            ⚠️ BOTTOM 5 PERFORMERS — Q1 ROI</div>
+                        {bot5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < bot5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
+                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
+                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmt(r.q1)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                </div>
 
                 {/* Full Q1 bar */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (F&O Only)")}
