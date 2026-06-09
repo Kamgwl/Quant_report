@@ -653,63 +653,6 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
             <div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
 
-                {/* Best vs Worst */}
-                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    {/* Top 5 */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            🏆 TOP 5 PERFORMERS — ANNUAL ROI (projected)</div>
-                        {top5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < 4 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: POS,
-                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.ann_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-
-                    {/* Bot 5 */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            ⚠️ BOTTOM 5 PERFORMERS — ANNUAL ROI (projected)</div>
-                        {bot5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < 4 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
-                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.ann_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmt(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-                </div>
-
                 {/* Full Q1 bar */}
                 {sectionHead("Full Q1 P&L & Projected Annual ROI — Best to Worst (F&O Only)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
@@ -746,63 +689,6 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ height: 40 }} />
 
                 {sectionHead("Q1 2026–27 Consolidated Cash & ETF Report")}
-
-                {/* Best vs Worst (Cash) */}
-                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    {/* Top Cash Performers */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#fbbf24", fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            🏆 TOP PERFORMERS — Q1 ROI (CASH & ETF)</div>
-                        {cashTop5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashTop5.length - 1 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: "#fbbf24",
-                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-
-                    {/* Bottom Cash Performers */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            ⚠️ BOTTOM PERFORMERS — Q1 ROI (CASH & ETF)</div>
-                        {cashBot5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashBot5.length - 1 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
-                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15, color: "#fff" }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: r.q1_roi >= 0 ? POS : NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-                </div>
 
                 {/* Full Cash Q1 Bar Chart */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (Cash & ETF Only)")}
@@ -1030,55 +916,27 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 </div>
 
                 {/* Monthly annualized bar */}
-                <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:24, marginBottom:28}}>
-                    <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`}}>
-                        <div style={{color:"#6b8cbb", fontSize:12, fontWeight:700, marginBottom:14}}>ANNUALIZED ROI BY
-                            MONTH (%)</div>
-                        <div style={{color:"#4a6490", fontSize:11, marginBottom:10}}>Each month's ROI extrapolated to 12
-                            months</div>
-                        <ResponsiveContainer width="100%" height={200}>
-                            <BarChart data={monthlyAnn} barSize={44}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{fill:"#6b8cbb",fontSize:12}} axisLine={false}
-                                    tickLine={false} />
-                                <YAxis tick={{fill:"#6b8cbb",fontSize:11}} tickFormatter={v=>`${v}%`} axisLine={false}
-                                    tickLine={false} />
-                                    <Tooltip formatter={(v)=>`${v.toFixed(2)}%`}
-                                        contentStyle={{background:"#111d33",border:`1px solid
-                                        ${BORDER}`,borderRadius:8,fontSize:12}} />
-                                        <ReferenceLine y={0} stroke={BORDER} />
-                                        <Bar dataKey="roi" name="Ann. ROI %" radius={[6,6,0,0]}>
-                                            {monthlyAnn.map((d,i)=><Cell key={i} fill={d.roi>=0?"#fbbf24":NEG}/>)}
-                                        </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-
-                    {/* Top 10 annual performers */}
-                    <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`}}>
-                        <div style={{color:"#6b8cbb", fontSize:12, fontWeight:700, marginBottom:14}}>TOP 10 — PROJECTED
-                            ANNUAL ROI</div>
-                        {annRanked.slice(0,10).map((r,i)=>(
-                        <div key={r.code}
-                            style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px
-                            0",borderBottom:i<9?`1px solid ${BORDER}22`:"none"}}>
-                            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                                <div
-                                    style={{width:20,height:20,borderRadius:"50%",background:i<3?"#fbbf24":POS,color:"#000",fontWeight:800,fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                    {i+1}</div>
-                                <div>
-                                    <div style={{fontWeight:600,fontSize:12}}>{r.name}</div>
-                                    <div style={{color:"#4a6490",fontSize:10}}>₹{r.fund}L · {r.strategy||"—"}</div>
-                                </div>
-                            </div>
-                            <div style={{textAlign:"right"}}>
-                                <div style={{color:"#fbbf24",fontWeight:800,fontFamily:"'DM
-                                    Mono',monospace",fontSize:13}}>{fmtROI(r.ann_roi)}</div>
-                                <div style={{color:"#6b8cbb",fontSize:10}}>{fmtSign(r.ann_pnl)} proj.</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
+                <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`, marginBottom:28}}>
+                    <div style={{color:"#6b8cbb", fontSize:12, fontWeight:700, marginBottom:14}}>ANNUALIZED ROI BY
+                        MONTH (%)</div>
+                    <div style={{color:"#4a6490", fontSize:11, marginBottom:10}}>Each month's ROI extrapolated to 12
+                        months</div>
+                    <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={monthlyAnn} barSize={44}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                            <XAxis dataKey="month" tick={{fill:"#6b8cbb",fontSize:12}} axisLine={false}
+                                tickLine={false} />
+                            <YAxis tick={{fill:"#6b8cbb",fontSize:11}} tickFormatter={v=>`${v}%`} axisLine={false}
+                                tickLine={false} />
+                                <Tooltip formatter={(v)=>`${v.toFixed(2)}%`}
+                                    contentStyle={{background:"#111d33",border:`1px solid
+                                    ${BORDER}`,borderRadius:8,fontSize:12}} />
+                                    <ReferenceLine y={0} stroke={BORDER} />
+                                    <Bar dataKey="roi" name="Ann. ROI %" radius={[6,6,0,0]}>
+                                        {monthlyAnn.map((d,i)=><Cell key={i} fill={d.roi>=0?"#fbbf24":NEG}/>)}
+                                    </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
                 </div>
 
                 {/* Full annual ranking bar */}

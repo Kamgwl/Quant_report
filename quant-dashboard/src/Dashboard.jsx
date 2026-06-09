@@ -587,63 +587,6 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
             <div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
 
-                {/* Best vs Worst */}
-                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    {/* Top 5 */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            🏆 TOP 5 PERFORMERS — Q1 ROI</div>
-                        {top5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < 4 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: POS,
-                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-
-                    {/* Bot 5 */}
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            ⚠️ BOTTOM 5 PERFORMERS — Q1 ROI</div>
-                        {bot5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < 4 ? `1px solid ${BORDER}`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
-                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · ₹{r.fund}L
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmt(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-                </div>
-
                 {/* Full Q1 bar */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (F&O Only)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
@@ -680,63 +623,6 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
                 <div style={{ height: 40 }} />
 
                 {sectionHead("Q1 2026–27 Consolidated Cash & ETF Report")}
-
-                {/* Best vs Worst (Cash) */}
-                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    {/* Top Cash Performers */}
-                    <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, border: `1px solid var(--border)` }}>
-                        <div style={{ color: "var(--gold)", fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            🏆 TOP PERFORMERS — Q1 ROI (CASH & ETF)</div>
-                        {cashTop5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashTop5.length - 1 ? `1px solid var(--border)`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: "var(--gold)",
-                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
-                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-
-                    {/* Bottom Cash Performers */}
-                    <div style={{ background: "var(--card)", borderRadius: 12, padding: 20, border: `1px solid var(--border)` }}>
-                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            ⚠️ BOTTOM PERFORMERS — Q1 ROI (CASH & ETF)</div>
-                        {cashBot5.map((r, i) => (
-                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
-                            alignItems: "center" , padding: "10px 0" , borderBottom: i < cashBot5.length - 1 ? `1px solid var(--border)`
-                            : "none" }}>
-                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
-                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
-                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
-                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
-                                    <div style={{ color: "var(--muted2)" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ color: r.q1_roi >= 0 ? POS : NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
-                                <div style={{ color: "var(--muted)" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-                </div>
 
                 {/* Full Cash Q1 Bar Chart */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (Cash & ETF Only)")}
