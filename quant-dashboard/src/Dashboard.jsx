@@ -13,10 +13,12 @@ import { saveAs } from 'file-saver'
 // ── CASH STRATEGY DETECTION ────────────────────────────────────────────────────
 const CASH_STRATEGIES = ["CASH", "ETF", "NA"];
 function isCashStrategy(r) {
-const s = (r.strategy || "").trim().toUpperCase();
-return CASH_STRATEGIES.includes(s) ||
-r.name.toLowerCase().includes("cash") ||
-r.name.toLowerCase().includes("etf");
+  const seg = (r.segment || "").trim().toUpperCase();
+  const s = (r.strategy || "").trim().toUpperCase();
+  return seg === "CASH" || seg === "ETF" || 
+         CASH_STRATEGIES.includes(s) ||
+         r.name.toLowerCase().includes("cash") ||
+         r.name.toLowerCase().includes("etf");
 }
 
 // ── COMPUTED DATA ─────────────────────────────────────────────────────────────
@@ -299,17 +301,19 @@ const handleExportExcel = async () => {
 
 // ── Summary stats ──
 const totals = useMemo(() => {
-const totalFund = DATA.reduce((s, r) => s + r.fund, 0);
-const aprPnL = DATA.reduce((s, r) => s + r.apr, 0);
-const mayPnL = DATA.reduce((s, r) => s + r.may, 0);
-const junPnL = DATA.reduce((s, r) => s + r.jun, 0);
-const q1PnL = aprPnL + mayPnL + junPnL;
-const q1ROI = totalFund > 0 ? q1PnL / (totalFund * 1e7) : 0;
-const annROI = q1ROI * ANN_FACTOR;
-const annPnL = q1PnL * ANN_FACTOR;
-const winners = DATA.filter(r => r.q1 > 0).length;
-const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI,
-    annPnL, winners, losers }; }, []); // ── Month bar data (top 20 by absolute PnL) ──
+  const normalSection = DATA_ALL.filter(r => r.group === 1);
+  const totalFund = normalSection.reduce((s, r) => s + r.fund, 0);
+  const aprPnL = normalSection.reduce((s, r) => s + r.apr, 0);
+  const mayPnL = normalSection.reduce((s, r) => s + r.may, 0);
+  const junPnL = normalSection.reduce((s, r) => s + r.jun, 0);
+  const q1PnL = aprPnL + mayPnL + junPnL;
+  const q1ROI = totalFund > 0 ? q1PnL / (totalFund * 1e7) : 0;
+  const annROI = q1ROI * ANN_FACTOR;
+  const annPnL = q1PnL * ANN_FACTOR;
+  const winners = normalSection.filter(r => r.q1 > 0).length;
+  const losers = normalSection.filter(r => r.q1 < 0).length;
+  return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL, winners, losers };
+}, []); // ── Month bar data (top 20 by absolute PnL) ──
     const monthKey=selectedMonth; const monthROIKey=selectedMonth + "_roi"; const barData=useMemo(()=> {
     const sorted = [...DATA]
     .filter(r => Math.abs(r[monthKey]) > 0)
@@ -868,10 +872,11 @@ const losers = DATA.filter(r => r.q1 < 0).length; return { totalFund, aprPnL, ma
 
             {/* ── CASH / ETF / ATS ── */}
             {view === "cash" && (() => {
-            const cashTotalFund = DATA_CASH.reduce((s, r) => s + r.fund, 0);
-            const cashApr = DATA_CASH.reduce((s, r) => s + r.apr, 0);
-            const cashMay = DATA_CASH.reduce((s, r) => s + r.may, 0);
-            const cashJun = DATA_CASH.reduce((s, r) => s + r.jun, 0);
+            const cashSection = DATA_ALL.filter(r => r.group === 2 && r.code !== "P3361");
+            const cashTotalFund = cashSection.reduce((s, r) => s + r.fund, 0);
+            const cashApr = cashSection.reduce((s, r) => s + r.apr, 0);
+            const cashMay = cashSection.reduce((s, r) => s + r.may, 0);
+            const cashJun = cashSection.reduce((s, r) => s + r.jun, 0);
             const cashQ1 = cashApr + cashMay + cashJun;
             const cashQ1ROI = cashTotalFund > 0 ? cashQ1 / (cashTotalFund * 1e7) : 0;
             const cashTrend = [

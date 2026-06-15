@@ -24,6 +24,7 @@ SHEET_NAME  = "FY-(26-27)Q1"
 COL_CODE     = 2
 COL_NAME     = 3
 COL_STRATEGY = 5
+COL_SEGMENT  = 6
 COL_FUND     = 7
 COL_APR      = 8
 COL_APR_ROI  = 9
@@ -134,7 +135,7 @@ def is_data_row(ws, r):
     code = str(code).strip()
     if code.upper() in ("CODE", "", "NONE"):
         return False
-    if not re.match(r'^[A-Z0-9]{3,10}$', code.upper()):
+    if not re.match(r'^[A-Z0-9_]{3,10}$', code.upper()):
         return False
     return True
 
@@ -152,6 +153,7 @@ def extract_accounts(excel_path):
         code     = str(ws.cell(r, COL_CODE).value).strip()
         raw_name = str(ws.cell(r, COL_NAME).value or "").strip()
         raw_strat= str(ws.cell(r, COL_STRATEGY).value or "").strip()
+        raw_seg  = str(ws.cell(r, COL_SEGMENT).value or "").strip()
         fund     = safe_float(ws.cell(r, COL_FUND).value)
         apr      = safe_int(ws.cell(r, COL_APR).value)
         apr_roi  = safe_float(ws.cell(r, COL_APR_ROI).value)
@@ -170,10 +172,15 @@ def extract_accounts(excel_path):
             disp_name = raw_name
             strat     = raw_strat
 
+        is_deepesh = code in DEEPESH_CODES
+        group = 2 if is_deepesh else 1
+
         accounts.append({
             "code":       code,
             "name":       disp_name,
             "strategy":   strat,
+            "segment":    raw_seg,
+            "group":      group,
             "fund":       fund,
             "apr":        apr,
             "apr_roi":    round(apr_roi, 4),
@@ -181,7 +188,7 @@ def extract_accounts(excel_path):
             "may_roi":    round(may_roi, 4),
             "jun":        jun,
             "jun_roi":    round(jun_roi, 4),
-            "is_deepesh": code in DEEPESH_CODES,
+            "is_deepesh": is_deepesh,
         })
 
     print(f"    Extracted {len(accounts)} accounts.")
@@ -201,9 +208,10 @@ def build_raw_js(accounts):
         # Escape single quotes in name (JS string uses double quotes so safe)
         name_js  = acc["name"].replace('"', '\\"')
         strat_js = acc["strategy"].replace('"', '\\"')
+        seg_js   = acc["segment"].replace('"', '\\"')
 
         line = (
-            f'{{ code:"{acc["code"]}", name:"{name_js}", strategy:"{strat_js}", '
+            f'{{ code:"{acc["code"]}", name:"{name_js}", strategy:"{strat_js}", segment:"{seg_js}", group:{acc["group"]}, '
             f'fund:{fmt_num(acc["fund"])}, '
             f'apr:{acc["apr"]}, apr_roi:{fmt_num(acc["apr_roi"])}, '
             f'may:{acc["may"]}, may_roi:{fmt_num(acc["may_roi"])}, '
