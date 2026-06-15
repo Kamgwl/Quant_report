@@ -24,13 +24,13 @@ SHEET_NAME  = "FY-(26-27)Q1"
 COL_CODE     = 2
 COL_NAME     = 3
 COL_STRATEGY = 5
-COL_FUND     = 6
-COL_APR      = 7
-COL_APR_ROI  = 8
-COL_MAY      = 9
-COL_MAY_ROI  = 10
-COL_JUN      = 11
-COL_JUN_ROI  = 12
+COL_FUND     = 7
+COL_APR      = 8
+COL_APR_ROI  = 9
+COL_MAY      = 10
+COL_MAY_ROI  = 11
+COL_JUN      = 12
+COL_JUN_ROI  = 13
 
 DATA_START_ROW = 4   # row 3 is the header row; data from row 4
 
