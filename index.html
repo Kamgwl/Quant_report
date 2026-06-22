@@ -496,7 +496,8 @@ const totals = useMemo(() => {
   const annPnL = q1PnL * ANN_FACTOR;
   const winners = normalSection.filter(r => r.q1 > 0).length;
   const losers = normalSection.filter(r => r.q1 < 0).length;
-  return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL, winners, losers };
+  const count = normalSection.length;
+  return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL, winners, losers, count };
 }, []); // ── Month bar data (top 20 by absolute PnL) ──
     const monthKey=selectedMonth; const monthROIKey=selectedMonth + "_roi"; const barData=useMemo(()=> {
     const sorted = [...DATA]
@@ -679,7 +680,7 @@ const totals = useMemo(() => {
                                     <StatCard label="June P&L" value={fmtSign(totals.junPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.junPnL
                                         / (totals.totalFund * 1e7) : 0)} color={totals.junPnL>= 0 ? POS : NEG} />
                                         <StatCard label="Winners / Losers" value={`${totals.winners} /
-                                            ${totals.losers}`} sub={`${DATA.length} total accounts`} color="#a78bfa" />
+                                            ${totals.losers}`} sub={`${totals.count} total accounts`} color="#a78bfa" />
             </div>
         </div>
 
