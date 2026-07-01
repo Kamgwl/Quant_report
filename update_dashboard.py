@@ -21,17 +21,20 @@ EXCEL_FILE  = "Quant Strategy(2026-27).xlsx"
 SHEET_NAME  = "FY-(26-27)Q1"
 
 # Column positions in the FY-(26-27)Q1 sheet  (1-based)
-COL_CODE     = 2
-COL_NAME     = 3
-COL_STRATEGY = 5
-COL_SEGMENT  = 6
-COL_FUND     = 7
-COL_APR      = 8
-COL_APR_ROI  = 9
-COL_MAY      = 10
-COL_MAY_ROI  = 11
-COL_JUN      = 12
-COL_JUN_ROI  = 13
+# NOTE: the 2026-27 workbook dropped the old leading blank column A, so every
+# field shifted one column left vs. the original layout (code was col 2 → now
+# col 1). Column 3 is now an "ID" column (e.g. ATS / XTS09) which we ignore.
+COL_CODE     = 1
+COL_NAME     = 2
+COL_STRATEGY = 4
+COL_SEGMENT  = 5
+COL_FUND     = 6
+COL_APR      = 7
+COL_APR_ROI  = 8
+COL_MAY      = 9
+COL_MAY_ROI  = 10
+COL_JUN      = 11
+COL_JUN_ROI  = 12
 
 DATA_START_ROW = 4   # row 3 is the header row; data from row 4
 
