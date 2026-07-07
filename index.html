@@ -152,7 +152,7 @@ const RAW = [
 { code:"P3020", name:"Mahavir Jindal", strategy:"SELF", segment:"NSEFO", group:1, fund:5, apr:668954, apr_roi:1.3379, may:-630839, may_roi:-1.2617, jun:-85853, jun_roi:-0.1717, jul:168606, jul_roi:0.3372, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P3341", name:"Maneesh Yadav", strategy:"NSE FO", segment:"NSEFO", group:1, fund:0.5, apr:47009, apr_roi:0.9402, may:-22476, may_roi:-0.4495, jun:92362, jun_roi:1.8472, jul:38494, jul_roi:0.7699, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P2971", name:"Neeraj Garg_1", strategy:"Straddle", segment:"NSEFO", group:1, fund:0.6, apr:3832, apr_roi:0.0639, may:56826, may_roi:0.9471, jun:0, jun_roi:0, jul:0, jul_roi:0, aug:0, aug_roi:0, sep:0, sep_roi:0 },
-{ code:"P2971_2", name:"Neeraj Garg_2", strategy:"ACE1", segment:"NSEFO", group:1, fund:0.4, apr:104032, apr_roi:2.6008, may:-9232, may_roi:-0.2308, jun:-106628, jun_roi:-2.6657, jul:25775, jul_roi:0.6444, aug:0, aug_roi:0, sep:0, sep_roi:0 },
+{ code:"P2971_2", name:"Neeraj Garg_2", strategy:"ACE1", segment:"NSEFO", group:1, fund:0.4, apr:104032, apr_roi:2.6008, may:-9232, may_roi:-0.2308, jun:-106628, jun_roi:-2.6657, jul:-15412, jul_roi:-0.3853, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P2940", name:"Prince Cash", strategy:"cash", segment:"CASH", group:1, fund:0.5, apr:77627, apr_roi:1.5525, may:-318673, may_roi:-6.3735, jun:193584, jun_roi:3.8717, jul:0, jul_roi:0, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P3347", name:"Prince FO", strategy:"FO", segment:"NSEFO", group:1, fund:0.5, apr:43500, apr_roi:0.87, may:-206560, may_roi:-4.1312, jun:-172401, jun_roi:-3.448, jul:200, jul_roi:0.004, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P3070", name:"Prateek_2", strategy:"multipul", segment:"NSEFO", group:1, fund:4, apr:134591, apr_roi:0.3365, may:-283771, may_roi:-0.7094, jun:-251119, jun_roi:-0.6278, jul:43955, jul_roi:0.1099, aug:0, aug_roi:0, sep:0, sep_roi:0 },
@@ -262,6 +262,19 @@ const StatCard = ({ label, value, sub, color }) => (
 </div>
 );
 
+// Small per-sheet "Export to Excel" button (used at the top of each tab)
+const ExportBtn = ({ onClick, label }) => (
+  <button onClick={onClick} title="Download this sheet as a styled Excel file"
+    style={{ display: "inline-flex", alignItems: "center", gap: 6,
+      background: "rgba(0, 229, 255, 0.1)", border: `1px solid ${ACCENT}`, color: ACCENT,
+      borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700,
+      whiteSpace: "nowrap", outline: "none" }}
+    onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#000"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)"; e.currentTarget.style.color = ACCENT; }}>
+    <span style={{ fontSize: 13 }}>📥</span> {label || "Export to Excel"}
+  </button>
+);
+
 const CustomTooltip = ({ active, payload, label }) => {
 if (!active || !payload?.length) return null;
 return (
@@ -291,9 +304,57 @@ const EXPORT_COLUMNS = [
   { key: "jun_roi", label: "June ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "q1", label: "Q1 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "q1_roi", label: "Q1 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "jul", label: "July P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "jul_roi", label: "July ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "q2", label: "Q2 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "q2_roi", label: "Q2 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "year", label: "FY P&L (YTD)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "year_roi", label: "FY ROI (YTD)", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "ann_pnl", label: "Ann. P&L (Projected)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "ann_roi", label: "Ann. ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
 ];
+
+// ── PER-SHEET EXPORT COLUMN SETS ────────────────────────────────────────────
+const PNL_FMT  = "+₹#,##,##0;-₹#,##,##0;\"—\"";
+const ROI_FMT  = "+0.00%;-0.00%;0.00%";
+const FUND_FMT = "₹#,##0.00 \"Cr\"";
+
+// Full per-account breakdown (used by User Performance, Quarter Summary, Cash)
+const COLS_ACCOUNT_FULL = [
+  { key: "code", label: "Code", align: "left" },
+  { key: "name", label: "Name", align: "left" },
+  { key: "strategy", label: "Strategy", align: "left" },
+  { key: "fund", label: "Fund (Cr)", align: "right", numFmt: FUND_FMT },
+  { key: "apr", label: "Apr P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "apr_roi", label: "Apr ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "may", label: "May P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "may_roi", label: "May ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "jun", label: "Jun P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "jun_roi", label: "Jun ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "q1", label: "Q1 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "q1_roi", label: "Q1 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "jul", label: "Jul P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "jul_roi", label: "Jul ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "aug", label: "Aug P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "aug_roi", label: "Aug ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "sep", label: "Sep P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "sep_roi", label: "Sep ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "q2", label: "Q2 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "q2_roi", label: "Q2 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "year", label: "FY P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "year_roi", label: "FY ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+];
+
+// Strategy aggregate table (roi here is already a ×100 percentage number)
+const COLS_STRATEGY = [
+  { key: "strategy", label: "Strategy", align: "left" },
+  { key: "count", label: "Accounts", align: "right", numFmt: "0" },
+  { key: "fund", label: "Fund (Cr)", align: "right", numFmt: "#,##0.00" },
+  { key: "pnl", label: "Q1 Net P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "roi", label: "Q1 ROI %", align: "right", numFmt: "0.00\"%\"", colorCode: true },
+];
+
+const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2", year:"FY" };
 
 function Dashboard() {
 const [theme, setTheme] = useState(() => localStorage.getItem("qd-theme") || "dark");
@@ -328,46 +389,31 @@ const [selectedCols, setSelectedCols] = useState({
   jun_roi: true,
   q1: true,
   q1_roi: true,
+  jul: true,
+  jul_roi: true,
+  q2: true,
+  q2_roi: true,
+  year: true,
+  year_roi: true,
   ann_pnl: true,
   ann_roi: true,
 });
 
-const handleExportExcel = async () => {
+// Generic styled-xlsx exporter — reused by the global modal AND every per-tab button.
+const exportRowsToExcel = async (rows, columns, sheetLabel, fileName) => {
   try {
-    let exportData = [];
-    if (exportScope === "all") {
-      exportData = DATA_ALL;
-    } else if (exportScope === "fo") {
-      exportData = DATA;
-    } else if (exportScope === "cash") {
-      exportData = DATA_CASH;
-    }
-
     const ExcelJS = window.ExcelJS;
     const saveAs = window.saveAs || (window.FileSaver && window.FileSaver.saveAs);
-    if (!ExcelJS) {
-      alert("ExcelJS library not loaded. Please check your internet connection.");
-      return;
-    }
+    if (!ExcelJS) { alert("ExcelJS library not loaded. Please check your internet connection."); return; }
+    if (!columns || columns.length === 0) { alert("No columns selected to export."); return; }
+    if (!rows || rows.length === 0) { alert("No data to export on this sheet."); return; }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Quant Q1 FY2026-27");
+    const worksheet = workbook.addWorksheet(String(sheetLabel).slice(0, 31));
 
-    const activeCols = EXPORT_COLUMNS.filter(c => selectedCols[c.key]);
-
-    if (activeCols.length === 0) {
-      alert("Please select at least one column to export.");
-      return;
-    }
-
-    worksheet.columns = activeCols.map(col => ({
-      header: col.label,
-      key: col.key,
-      width: 15,
-      style: {
-        font: { name: 'Segoe UI', size: 10 },
-        alignment: { vertical: 'middle', horizontal: col.align }
-      }
+    worksheet.columns = columns.map(col => ({
+      header: col.label, key: col.key, width: 15,
+      style: { font: { name: 'Segoe UI', size: 10 }, alignment: { vertical: 'middle', horizontal: col.align || 'left' } }
     }));
 
     const headerRow = worksheet.getRow(1);
@@ -376,119 +422,95 @@ const handleExportExcel = async () => {
     const headerBg = isDark ? "FF0D1526" : "FFF3F6FB";
     const headerFg = isDark ? "FF00E5FF" : "FF0091B3";
     const headerBorderColor = isDark ? "FF1E2D4A" : "FFD5DEEC";
-
-    activeCols.forEach((colDef, idx) => {
+    columns.forEach((colDef, idx) => {
       const cell = headerRow.getCell(idx + 1);
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: headerBg }
-      };
-      cell.font = {
-        name: 'Segoe UI',
-        size: 11,
-        bold: true,
-        color: { argb: headerFg }
-      };
-      cell.border = {
-        bottom: { style: 'medium', color: { argb: headerBorderColor } }
-      };
-      cell.alignment = {
-        vertical: 'middle',
-        horizontal: colDef.align
-      };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerBg } };
+      cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: headerFg } };
+      cell.border = { bottom: { style: 'medium', color: { argb: headerBorderColor } } };
+      cell.alignment = { vertical: 'middle', horizontal: colDef.align || 'left' };
     });
 
-    exportData.forEach((row) => {
+    rows.forEach((row) => {
       const rowData = {};
-      activeCols.forEach(col => {
-        rowData[col.key] = row[col.key] ?? null;
-      });
-
+      columns.forEach(col => { rowData[col.key] = row[col.key] ?? null; });
       const addedRow = worksheet.addRow(rowData);
       addedRow.height = 20;
-
-      activeCols.forEach((colDef, idx) => {
+      columns.forEach((colDef, idx) => {
         const cell = addedRow.getCell(idx + 1);
         const val = row[colDef.key];
-
         cell.border = {
           top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
         };
-
-        if (colDef.numFmt) {
-          cell.numFmt = colDef.numFmt;
-        }
-
+        if (colDef.numFmt) cell.numFmt = colDef.numFmt;
         if (colDef.colorCode && typeof val === 'number') {
           if (val > 0) {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFE6F4EA' }
-            };
-            cell.font = {
-              name: 'Segoe UI',
-              size: 10,
-              color: { argb: 'FF137333' },
-              bold: true
-            };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F4EA' } };
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF137333' }, bold: true };
           } else if (val < 0) {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFCE8E6' }
-            };
-            cell.font = {
-              name: 'Segoe UI',
-              size: 10,
-              color: { argb: 'FFC5221F' },
-              bold: true
-            };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E6' } };
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FFC5221F' }, bold: true };
           }
         }
       });
     });
 
-    activeCols.forEach((colDef, idx) => {
+    columns.forEach((colDef, idx) => {
       const column = worksheet.getColumn(idx + 1);
-      let maxLen = 12;
+      let maxLen = Math.max(12, String(colDef.label).length + 2);
       column.eachCell({ includeEmpty: true }, cell => {
-        let valStr = '';
-        if (cell.value !== null && cell.value !== undefined) {
-          if (typeof cell.value === 'object' && cell.value.text) {
-            valStr = cell.value.text.toString();
-          } else {
-            valStr = cell.value.toString();
-          }
-        }
-        if (colDef.key && colDef.key.endsWith('_roi')) {
-          valStr += '% +';
-        } else if (colDef.key === 'fund') {
-          valStr += ' Cr ₹';
-        } else if (['apr', 'may', 'jun', 'q1', 'ann_pnl'].includes(colDef.key)) {
-          valStr = '₹+' + valStr + ',000';
-        }
-        
-        if (valStr.length > maxLen) {
-          maxLen = valStr.length;
-        }
+        const valStr = (cell.value === null || cell.value === undefined) ? ''
+          : (typeof cell.value === 'object' && cell.value.text ? cell.value.text.toString() : cell.value.toString());
+        if (valStr.length + 6 > maxLen) maxLen = valStr.length + 6;
       });
-      column.width = Math.min(maxLen + 4, 30);
+      column.width = Math.min(maxLen, 30);
     });
+
+    // Freeze header row for easier scrolling
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    saveAs(blob, `Quant_Q1_FY2026-27_${exportScope.toUpperCase()}.xlsx`);
-
-    setShowExportModal(false);
+    saveAs(blob, fileName);
   } catch (error) {
     console.error("Export failed", error);
     alert("An error occurred during export: " + error.message);
   }
+};
+
+// Global modal export (scope + column picker)
+const handleExportExcel = async () => {
+  const exportData = exportScope === "all" ? DATA_ALL : exportScope === "cash" ? DATA_CASH : DATA;
+  const activeCols = EXPORT_COLUMNS.filter(c => selectedCols[c.key]);
+  await exportRowsToExcel(exportData, activeCols, "Quant FY2026-27", `Quant_FY2026-27_${exportScope.toUpperCase()}.xlsx`);
+  setShowExportModal(false);
+};
+
+// ── Per-tab (per-sheet) exports ──
+const exportUserSheet = () =>
+  exportRowsToExcel(ranked, COLS_ACCOUNT_FULL, "User Performance", "Quant_UserPerformance_FY2026-27.xlsx");
+const exportCashSheet = () =>
+  exportRowsToExcel(cashRanked, COLS_ACCOUNT_FULL, "Cash ETF ATS", "Quant_Cash-ETF-ATS_FY2026-27.xlsx");
+const exportStrategySheet = () =>
+  exportRowsToExcel(strategyData, COLS_STRATEGY, "Strategy Analysis", "Quant_StrategyAnalysis_FY2026-27.xlsx");
+const exportQuarterSheet = () =>
+  exportRowsToExcel(ranked, COLS_ACCOUNT_FULL, "Quarter Summary", "Quant_QuarterSummary_FY2026-27.xlsx");
+const exportMonthlySheet = () => {
+  const key = selectedMonth, roiKey = key + "_roi";
+  const rows = [...DATA].filter(r => Math.abs(r[key]) > 0)
+    .sort((a, b) => (sortBy === "roi" ? b[roiKey] - a[roiKey] : b[key] - a[key]));
+  const lbl = MONTH_LABEL[key] || key;
+  const cols = [
+    { key: "code", label: "Code", align: "left" },
+    { key: "name", label: "Name", align: "left" },
+    { key: "strategy", label: "Strategy", align: "left" },
+    { key: "fund", label: "Fund (Cr)", align: "right", numFmt: FUND_FMT },
+    { key, label: `${lbl} P&L`, align: "right", numFmt: PNL_FMT, colorCode: true },
+    { key: roiKey, label: `${lbl} ROI`, align: "right", numFmt: ROI_FMT, colorCode: true },
+  ];
+  exportRowsToExcel(rows, cols, `Monthly ${lbl}`, `Quant_Monthly_${lbl}_FY2026-27.xlsx`);
 };
 
 // ── Summary stats ──
@@ -722,6 +744,9 @@ const totals = useMemo(() => {
             {/* ── MONTHLY ── */}
             {view === "monthly" && (
             <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportMonthlySheet} label="Export Monthly Sheet" />
+                </div>
                 {sectionHead("Monthly P&L Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 32 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
@@ -824,6 +849,9 @@ const totals = useMemo(() => {
             {/* ── QUARTERLY ── */}
             {view === "quarterly" && (
             <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportQuarterSheet} label="Export Quarter Sheet" />
+                </div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
 
                 {/* Best vs Worst */}
@@ -960,6 +988,9 @@ const totals = useMemo(() => {
             {/* ── USER PERFORMANCE ── */}
             {view === "user" && (
             <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportUserSheet} label="Export User Sheet" />
+                </div>
                 {sectionHead("User-Wise Performance Table")}
             <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
@@ -1013,6 +1044,9 @@ const totals = useMemo(() => {
             {/* ── STRATEGY ── */}
             {view === "strategy" && (
             <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportStrategySheet} label="Export Strategy Sheet" />
+                </div>
                 {sectionHead("Strategy-Wise Q1 Performance")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
@@ -1113,6 +1147,9 @@ const totals = useMemo(() => {
             ];
             return (
             <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportCashSheet} label="Export Cash / ETF Sheet" />
+                </div>
                 {/* Notice banner */}
                 <div style={{ background: "rgba(234,179,8,0.08)" , border: "1px solid rgba(234,179,8,0.3)" ,
                     borderRadius: 10, padding: "12px 18px" , marginBottom: 24, display: "flex" , alignItems: "center" ,
