@@ -18,9 +18,11 @@ from datetime import datetime
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 EXCEL_FILE  = "Quant Strategy(2026-27).xlsx"
-SHEET_NAME  = "FY-(26-27)Q1"
+SHEET_Q1    = "FY-(26-27)Q1"   # Apr / May / Jun
+SHEET_Q2    = "FY-(26-27)Q2"   # Jul / Aug / Sep
 
-# Column positions in the FY-(26-27)Q1 sheet  (1-based)
+# Column positions (1-based). The Q1 and Q2 sheets share an identical layout;
+# only the three month columns mean different months (Apr-Jun vs Jul-Sep).
 # NOTE: the 2026-27 workbook dropped the old leading blank column A, so every
 # field shifted one column left vs. the original layout (code was col 2 → now
 # col 1). Column 3 is now an "ID" column (e.g. ATS / XTS09) which we ignore.
@@ -29,12 +31,12 @@ COL_NAME     = 2
 COL_STRATEGY = 4
 COL_SEGMENT  = 5
 COL_FUND     = 6
-COL_APR      = 7
-COL_APR_ROI  = 8
-COL_MAY      = 9
-COL_MAY_ROI  = 10
-COL_JUN      = 11
-COL_JUN_ROI  = 12
+COL_M1       = 7    # Apr (Q1)  /  Jul (Q2)
+COL_M1_ROI   = 8
+COL_M2       = 9    # May (Q1)  /  Aug (Q2)
+COL_M2_ROI   = 10
+COL_M3       = 11   # Jun (Q1)  /  Sep (Q2)
+COL_M3_ROI   = 12
 
 DATA_START_ROW = 4   # row 3 is the header row; data from row 4
 
@@ -143,27 +145,50 @@ def is_data_row(ws, r):
     return True
 
 # ── EXTRACTION ────────────────────────────────────────────────────────────────
-def extract_accounts(excel_path):
-    print(f"[1/4] Reading {os.path.basename(excel_path)} ...")
-    wb = openpyxl.load_workbook(excel_path, data_only=True)
-    ws = wb[SHEET_NAME]
-
-    accounts = []
+def read_quarter(ws):
+    """Read one quarterly sheet into {code: {name, strategy, segment, fund, m1..m3(_roi)}}.
+    m1/m2/m3 are the three months in sheet order (Apr-Jun for Q1, Jul-Sep for Q2)."""
+    out = {}
     for r in range(DATA_START_ROW, ws.max_row + 1):
         if not is_data_row(ws, r):
             continue
+        code = str(ws.cell(r, COL_CODE).value).strip()
+        out[code] = {
+            "name":     str(ws.cell(r, COL_NAME).value or "").strip(),
+            "strategy": str(ws.cell(r, COL_STRATEGY).value or "").strip(),
+            "segment":  str(ws.cell(r, COL_SEGMENT).value or "").strip(),
+            "fund":     safe_float(ws.cell(r, COL_FUND).value),
+            "m1":       safe_int(ws.cell(r, COL_M1).value),
+            "m1_roi":   safe_float(ws.cell(r, COL_M1_ROI).value),
+            "m2":       safe_int(ws.cell(r, COL_M2).value),
+            "m2_roi":   safe_float(ws.cell(r, COL_M2_ROI).value),
+            "m3":       safe_int(ws.cell(r, COL_M3).value),
+            "m3_roi":   safe_float(ws.cell(r, COL_M3_ROI).value),
+        }
+    return out
 
-        code     = str(ws.cell(r, COL_CODE).value).strip()
-        raw_name = str(ws.cell(r, COL_NAME).value or "").strip()
-        raw_strat= str(ws.cell(r, COL_STRATEGY).value or "").strip()
-        raw_seg  = str(ws.cell(r, COL_SEGMENT).value or "").strip()
-        fund     = safe_float(ws.cell(r, COL_FUND).value)
-        apr      = safe_int(ws.cell(r, COL_APR).value)
-        apr_roi  = safe_float(ws.cell(r, COL_APR_ROI).value)
-        may      = safe_int(ws.cell(r, COL_MAY).value)
-        may_roi  = safe_float(ws.cell(r, COL_MAY_ROI).value)
-        jun      = safe_int(ws.cell(r, COL_JUN).value)
-        jun_roi  = safe_float(ws.cell(r, COL_JUN_ROI).value)
+def extract_accounts(excel_path):
+    print(f"[1/4] Reading {os.path.basename(excel_path)} ...")
+    wb = openpyxl.load_workbook(excel_path, data_only=True)
+
+    q1 = read_quarter(wb[SHEET_Q1])
+    q2 = read_quarter(wb[SHEET_Q2]) if SHEET_Q2 in wb.sheetnames else {}
+    print(f"    Q1 sheet: {len(q1)} accounts | Q2 sheet: {len(q2)} accounts.")
+
+    # Union of codes, Q1 order first, then any Q2-only codes appended.
+    codes = list(q1.keys()) + [c for c in q2 if c not in q1]
+    EMPTY = {"m1": 0, "m1_roi": 0.0, "m2": 0, "m2_roi": 0.0, "m3": 0, "m3_roi": 0.0}
+
+    accounts = []
+    for code in codes:
+        a1  = q1.get(code, EMPTY)
+        a2  = q2.get(code, EMPTY)
+        ident = q1.get(code) or q2.get(code)   # identity/fund from Q1 if present
+
+        raw_name  = ident["name"]
+        raw_strat = ident["strategy"]
+        raw_seg   = ident["segment"]
+        fund      = ident["fund"]
 
         if code in NAME_OVERRIDES:
             ov = NAME_OVERRIDES[code]
@@ -185,16 +210,18 @@ def extract_accounts(excel_path):
             "segment":    raw_seg,
             "group":      group,
             "fund":       fund,
-            "apr":        apr,
-            "apr_roi":    round(apr_roi, 4),
-            "may":        may,
-            "may_roi":    round(may_roi, 4),
-            "jun":        jun,
-            "jun_roi":    round(jun_roi, 4),
+            # Q1 months
+            "apr": a1["m1"], "apr_roi": round(a1["m1_roi"], 4),
+            "may": a1["m2"], "may_roi": round(a1["m2_roi"], 4),
+            "jun": a1["m3"], "jun_roi": round(a1["m3_roi"], 4),
+            # Q2 months
+            "jul": a2["m1"], "jul_roi": round(a2["m1_roi"], 4),
+            "aug": a2["m2"], "aug_roi": round(a2["m2_roi"], 4),
+            "sep": a2["m3"], "sep_roi": round(a2["m3_roi"], 4),
             "is_deepesh": is_deepesh,
         })
 
-    print(f"    Extracted {len(accounts)} accounts.")
+    print(f"    Merged {len(accounts)} accounts (Q1 + Q2).")
     return accounts
 
 # ── JS RAW ARRAY BUILDER ──────────────────────────────────────────────────────
@@ -218,7 +245,10 @@ def build_raw_js(accounts):
             f'fund:{fmt_num(acc["fund"])}, '
             f'apr:{acc["apr"]}, apr_roi:{fmt_num(acc["apr_roi"])}, '
             f'may:{acc["may"]}, may_roi:{fmt_num(acc["may_roi"])}, '
-            f'jun:{acc["jun"]}, jun_roi:{fmt_num(acc["jun_roi"])} }}{comma}'
+            f'jun:{acc["jun"]}, jun_roi:{fmt_num(acc["jun_roi"])}, '
+            f'jul:{acc["jul"]}, jul_roi:{fmt_num(acc["jul_roi"])}, '
+            f'aug:{acc["aug"]}, aug_roi:{fmt_num(acc["aug_roi"])}, '
+            f'sep:{acc["sep"]}, sep_roi:{fmt_num(acc["sep_roi"])} }}{comma}'
         )
         lines.append(line)
 
@@ -299,16 +329,25 @@ def main():
             updated += 1
 
     # 4. Summary
-    total_apr = sum(a["apr"] for a in accounts)
-    total_may = sum(a["may"] for a in accounts)
-    total_jun = sum(a["jun"] for a in accounts)
-    total_q1  = total_apr + total_may + total_jun
+    tot = lambda k: sum(a[k] for a in accounts)
+    total_apr, total_may, total_jun = tot("apr"), tot("may"), tot("jun")
+    total_jul, total_aug, total_sep = tot("jul"), tot("aug"), tot("sep")
+    total_q1 = total_apr + total_may + total_jun
+    total_q2 = total_jul + total_aug + total_sep
+    total_fy = total_q1 + total_q2
 
     print(f"\n[4/4] Done -- {updated} file(s) updated.  {len(accounts)} accounts.")
     print(f"      Apr P&L: Rs. {total_apr:>14,.0f}")
     print(f"      May P&L: Rs. {total_may:>14,.0f}")
     print(f"      Jun P&L: Rs. {total_jun:>14,.0f}")
     print(f"      Q1  P&L: Rs. {total_q1:>14,.0f}")
+    print(f"      ---")
+    print(f"      Jul P&L: Rs. {total_jul:>14,.0f}")
+    print(f"      Aug P&L: Rs. {total_aug:>14,.0f}")
+    print(f"      Sep P&L: Rs. {total_sep:>14,.0f}")
+    print(f"      Q2  P&L: Rs. {total_q2:>14,.0f}")
+    print(f"      ===")
+    print(f"      FY  P&L: Rs. {total_fy:>14,.0f}")
 
 if __name__ == "__main__":
     main()
