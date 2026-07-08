@@ -93,6 +93,24 @@
       transform: translateY(-1px);
       border-color: var(--accent);
     }
+
+    /* ── PRINT ─────────────────────────────────────────────────────────── */
+    @media print {
+      /* Force a clean, ink-friendly light palette regardless of screen theme */
+      :root, [data-theme='dark'], [data-theme='light'] {
+        --bg: #ffffff; --panel: #ffffff; --card: #ffffff; --row-alt: #f4f6fb;
+        --border: #c9d3e4; --text: #0f1b2d; --muted: #45566f; --muted2: #6b7a93;
+        --axis: #2a3a52; --accent: #0069a3; --tooltip-bg: #ffffff;
+        color-scheme: light;
+      }
+      html, body { background: #fff !important; }
+      .no-print { display: none !important; }
+      .print-section { break-inside: avoid-page; page-break-inside: avoid; margin-bottom: 18px; }
+      .print-pagebreak { page-break-before: always; }
+      /* let tables/charts use full width and not clip */
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      @page { margin: 12mm; }
+    }
   </style>
 </head>
 <body>
@@ -376,6 +394,28 @@ const [sortBy, setSortBy] = useState("roi");
 
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
+
+// ── Print state ──
+const [showPrintModal, setShowPrintModal] = useState(false);
+const [printMode, setPrintMode] = useState(false);
+const [printSel, setPrintSel] = useState({
+  summary: true, monthly: false, quarterly: true, user: true, strategy: true, cash: false,
+});
+// When print mode turns on, wait a tick for the selected sections + charts to
+// render, fire the browser print dialog, then drop back to normal view.
+useEffect(() => {
+  if (!printMode) return;
+  const t = setTimeout(() => {
+    window.print();
+    setPrintMode(false);
+  }, 350);
+  const after = () => setPrintMode(false);
+  window.addEventListener("afterprint", after);
+  return () => { clearTimeout(t); window.removeEventListener("afterprint", after); };
+}, [printMode]);
+const startPrint = () => { setShowPrintModal(false); setPrintMode(true); };
+// A section renders normally when its tab is active, OR (in print mode) when ticked.
+const showSection = (id) => printMode ? printSel[id] : view === id;
 const [selectedCols, setSelectedCols] = useState({
   code: true,
   name: true,
@@ -654,7 +694,22 @@ const totals = useMemo(() => {
                         </div>
                     </div>
                 </div>
-                <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                <div className="no-print" style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                    <button
+                        onClick={() => setShowPrintModal(true)}
+                        title="Print / save selected sections as PDF"
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            background: "rgba(167, 139, 250, 0.12)",
+                            border: "1px solid var(--violet)", color: "var(--violet)",
+                            borderRadius: 8, padding: "9px 16px", cursor: "pointer",
+                            fontSize: 12, fontWeight: 700, transition: "all 0.2s ease-in-out", outline: "none"
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--violet)"; e.currentTarget.style.color = "#000"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(167, 139, 250, 0.12)"; e.currentTarget.style.color = "var(--violet)"; }}
+                    >
+                        <span style={{ fontSize: 14 }}>🖨️</span> Print
+                    </button>
                     <button
                         onClick={() => setShowExportModal(true)}
                         style={{
@@ -708,7 +763,8 @@ const totals = useMemo(() => {
             </div>
 
             {/* KPI Row */}
-            <div style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" , gap: 12,
+            {(!printMode || printSel.summary) && (
+            <div className="print-section" style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" , gap: 12,
                 marginTop: 20 }}>
                 <StatCard label="Total AUM" value={fmtFund(totals.totalFund)}
                     sub="Total Utilized Fund" color={ACCENT} />
@@ -729,10 +785,11 @@ const totals = useMemo(() => {
                                         <StatCard label="Winners / Losers" value={`${totals.winners} /
                                             ${totals.losers}`} sub={`${totals.count} total accounts`} color="#a78bfa" />
             </div>
+            )}
         </div>
 
         {/* Tabs */}
-        <div style={{ padding: "16px 32px 0" , display: "flex" , gap: 6, borderBottom: `1px solid ${BORDER}`,
+        <div className="no-print" style={{ padding: "16px 32px 0" , display: "flex" , gap: 6, borderBottom: `1px solid ${BORDER}`,
             background: "var(--panel)" }}>
             {tabs.map(t => (
             <button key={t.id} style={tabStyle(t.id)} onClick={()=> setView(t.id)}>{t.label}</button>
@@ -742,9 +799,9 @@ const totals = useMemo(() => {
         <div style={{ padding: "28px 32px" }}>
 
             {/* ── MONTHLY ── */}
-            {view === "monthly" && (
-            <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            {showSection("monthly") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                     <ExportBtn onClick={exportMonthlySheet} label="Export Monthly Sheet" />
                 </div>
                 {sectionHead("Monthly P&L Trend")}
@@ -847,9 +904,9 @@ const totals = useMemo(() => {
             )}
 
             {/* ── QUARTERLY ── */}
-            {view === "quarterly" && (
-            <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            {showSection("quarterly") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                     <ExportBtn onClick={exportQuarterSheet} label="Export Quarter Sheet" />
                 </div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
@@ -986,9 +1043,9 @@ const totals = useMemo(() => {
             )}
 
             {/* ── USER PERFORMANCE ── */}
-            {view === "user" && (
-            <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            {showSection("user") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                     <ExportBtn onClick={exportUserSheet} label="Export User Sheet" />
                 </div>
                 {sectionHead("User-Wise Performance Table")}
@@ -1042,9 +1099,9 @@ const totals = useMemo(() => {
             )}
 
             {/* ── STRATEGY ── */}
-            {view === "strategy" && (
-            <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            {showSection("strategy") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                     <ExportBtn onClick={exportStrategySheet} label="Export Strategy Sheet" />
                 </div>
                 {sectionHead("Strategy-Wise Q1 Performance")}
@@ -1132,7 +1189,7 @@ const totals = useMemo(() => {
 
 
             {/* ── CASH / ETF / ATS ── */}
-            {view === "cash" && (() => {
+            {showSection("cash") && (() => {
             const cashSection = DATA_ALL.filter(r => r.group === 2 && r.code !== "P3361");
             const cashTotalFund = cashSection.reduce((s, r) => s + r.fund, 0);
             const cashApr = cashSection.reduce((s, r) => s + r.apr, 0);
@@ -1146,8 +1203,8 @@ const totals = useMemo(() => {
             { month: "June", pnl: cashJun, roi: cashTotalFund > 0 ? cashJun / (cashTotalFund * 1e7) : 0 },
             ];
             return (
-            <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                     <ExportBtn onClick={exportCashSheet} label="Export Cash / ETF Sheet" />
                 </div>
                 {/* Notice banner */}
@@ -1288,6 +1345,64 @@ const totals = useMemo(() => {
             })()}
 
         </div>
+
+        {/* Print Modal overlay */}
+        {showPrintModal && (
+          <div className="no-print" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+            background: "rgba(4,7,13,0.85)", backdropFilter: "blur(6px)", display: "flex", justifyContent: "center",
+            alignItems: "center", zIndex: 1000 }}>
+            <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, width: 470,
+              maxWidth: "92%", boxShadow: "0 20px 45px rgba(0,0,0,0.6)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>🖨️ Print / Save as PDF</h3>
+                <button onClick={() => setShowPrintModal(false)} style={{ background: "transparent", border: "none",
+                  color: "var(--muted)", fontSize: 24, cursor: "pointer", lineHeight: 1, outline: "none" }}>&times;</button>
+              </div>
+              <p style={{ color: "var(--muted)", fontSize: 12, marginBottom: 18 }}>
+                Choose the sections to include, then use your browser dialog to print or “Save as PDF”.</p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 20 }}>
+                {[
+                  { id: "summary",   label: "Executive Summary (KPI cards)" },
+                  { id: "monthly",   label: "Monthly Report (trend + selected month)" },
+                  { id: "quarterly", label: "Quarter Summary (Top/Bottom + full Q1)" },
+                  { id: "user",      label: "User Performance table" },
+                  { id: "strategy",  label: "Strategy Analysis" },
+                  { id: "cash",      label: "Cash / ETF / ATS" },
+                ].map(s => (
+                  <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px",
+                    borderRadius: 8, cursor: "pointer", background: printSel[s.id] ? "rgba(167,139,250,0.10)" : "transparent",
+                    fontSize: 13, fontWeight: printSel[s.id] ? 700 : 500, color: "var(--text)" }}>
+                    <input type="checkbox" checked={printSel[s.id]}
+                      onChange={(e) => setPrintSel({ ...printSel, [s.id]: e.target.checked })}
+                      style={{ accentColor: "var(--violet)", width: 15, height: 15, cursor: "pointer" }} />
+                    {s.label}
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={() => setPrintSel({ summary: true, monthly: true, quarterly: true, user: true, strategy: true, cash: true })}
+                    style={{ background: "transparent", border: "none", color: "var(--violet)", fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none" }}>Select all</button>
+                  <span style={{ color: BORDER }}>|</span>
+                  <button onClick={() => setPrintSel({ summary: false, monthly: false, quarterly: false, user: false, strategy: false, cash: false })}
+                    style={{ background: "transparent", border: "none", color: "var(--muted)", fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none" }}>Clear</button>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setShowPrintModal(false)} style={{ background: "transparent", border: `1px solid ${BORDER}`,
+                    color: "var(--muted)", borderRadius: 8, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>Cancel</button>
+                  <button onClick={startPrint} disabled={!Object.values(printSel).some(Boolean)}
+                    style={{ background: "var(--violet)", border: "none", color: "#000", borderRadius: 8, padding: "10px 22px",
+                      fontSize: 13, fontWeight: 800, cursor: Object.values(printSel).some(Boolean) ? "pointer" : "not-allowed",
+                      outline: "none", opacity: Object.values(printSel).some(Boolean) ? 1 : 0.5 }}>
+                    🖨️ Print Selected
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export Modal overlay */}
         {showExportModal && (
