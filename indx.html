@@ -1,10 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
-BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-LineChart, Line, Cell, ReferenceLine, Legend
-} from "recharts";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Cell, ReferenceLine, Legend,
+} from 'recharts'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
+import html2canvas from 'html2canvas'
 
 // ── RAW DATA ──────────────────────────────────────────────────────────────────
 const RAW = [
@@ -98,12 +101,23 @@ function enrichRow(r) {
 const apr_roi = r.apr_roi / 100;
 const may_roi = r.may_roi / 100;
 const jun_roi = r.jun_roi / 100;
+const jul_roi = (r.jul_roi || 0) / 100;
+const aug_roi = (r.aug_roi || 0) / 100;
+const sep_roi = (r.sep_roi || 0) / 100;
+const jul = r.jul || 0, aug = r.aug || 0, sep = r.sep || 0;
 const q1 = r.apr + r.may + r.jun;
 const q1_roi = apr_roi + may_roi + jun_roi;
-const ann_roi = q1_roi * ANN_FACTOR;
+const q2 = jul + aug + sep;
+const q2_roi = jul_roi + aug_roi + sep_roi;
+// Yearly (FY) = sum of all quarters available so far (Q1 + Q2). Add q3/q4 here
+// when those sheets arrive.
+const year = q1 + q2;
+const year_roi = q1_roi + q2_roi;
+const ann_roi = q1_roi * ANN_FACTOR;   // annualized off the completed Q1 run-rate
 const ann_pnl = q1 * ANN_FACTOR;
 const strategy = (r.strategy || "").trim().toUpperCase();
-return { ...r, strategy, apr_roi, may_roi, jun_roi, q1, q1_roi, ann_roi, ann_pnl, isCash: isCashStrategy({ ...r, strategy }) };
+return { ...r, strategy, apr_roi, may_roi, jun_roi, jul, aug, sep, jul_roi, aug_roi, sep_roi,
+  q1, q1_roi, q2, q2_roi, year, year_roi, ann_roi, ann_pnl, isCash: isCashStrategy({ ...r, strategy }) };
 }
 
 const DATA_ALL = RAW.map(enrichRow);
@@ -129,31 +143,44 @@ const fmtROI = (n) => `${(n*100).toFixed(2)}%`;
 const fmtSign = (n) => n >= 0 ? `+${fmt(n)}` : fmt(n);
 
 // ── COLORS ─────────────────────────────────────────────────────────────────────
-const ACCENT = "#00e5ff";
-const POS = "#22c55e";
-const NEG = "#f43f5e";
-const BG = "#070b14";
-const CARD = "#0d1526";
-const BORDER = "#1e2d4a";
+const ACCENT = "var(--accent)";
+const POS = "var(--pos)";
+const NEG = "var(--neg)";
+const BG = "var(--bg)";
+const CARD = "var(--card)";
+const BORDER = "var(--border)";
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 
 const StatCard = ({ label, value, sub, color }) => (
 <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "18px 22px" , borderTop: `3px
     solid ${color || ACCENT}`, }}>
-    <div style={{ color: "#6b8cbb" , fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" ,
+    <div style={{ color: "var(--muted)" , fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" ,
         marginBottom: 6 }}>{label}</div>
-    <div style={{ color: color || "#fff" , fontSize: 24, fontWeight: 800, fontFamily: "'DM Mono', monospace" }}>{value}
+    <div style={{ color: color || "var(--text)" , fontSize: 24, fontWeight: 800, fontFamily: "'DM Mono', monospace" }}>{value}
     </div>
-    {sub && <div style={{ color: "#4a6490" , fontSize: 12, marginTop: 4 }}>{sub}</div>}
+    {sub && <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 4 }}>{sub}</div>}
 </div>
+);
+
+// Small per-sheet "Export to Excel" button (used at the top of each tab)
+const ExportBtn = ({ onClick, label }) => (
+  <button onClick={onClick} title="Download this sheet as a styled Excel file"
+    style={{ display: "inline-flex", alignItems: "center", gap: 6,
+      background: "rgba(0, 229, 255, 0.1)", border: `1px solid ${ACCENT}`, color: ACCENT,
+      borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700,
+      whiteSpace: "nowrap", outline: "none" }}
+    onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#000"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)"; e.currentTarget.style.color = ACCENT; }}>
+    <span style={{ fontSize: 13 }}>📥</span> {label || "Export to Excel"}
+  </button>
 );
 
 const CustomTooltip = ({ active, payload, label }) => {
 if (!active || !payload?.length) return null;
 return (
-<div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" , fontSize:
-    12 }}>
+<div style={{ background: "var(--tooltip-bg)" , border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" , fontSize:
+    12, color: "var(--axis)" }}>
     <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{label}</div>
     {payload.map((p, i) => (
     <div key={i} style={{ color: p.value>= 0 ? POS : NEG }}>
@@ -178,17 +205,120 @@ const EXPORT_COLUMNS = [
   { key: "jun_roi", label: "June ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "q1", label: "Q1 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "q1_roi", label: "Q1 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "jul", label: "July P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "jul_roi", label: "July ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "q2", label: "Q2 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "q2_roi", label: "Q2 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "year", label: "FY P&L (YTD)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "year_roi", label: "FY ROI (YTD)", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "ann_pnl", label: "Ann. P&L (Projected)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "ann_roi", label: "Ann. ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
 ];
 
-export default function Dashboard({ theme = "dark" }) {
+// ── PER-SHEET EXPORT COLUMN SETS ────────────────────────────────────────────
+const PNL_FMT  = "+₹#,##,##0;-₹#,##,##0;\"—\"";
+const ROI_FMT  = "+0.00%;-0.00%;0.00%";
+const FUND_FMT = "₹#,##0.00 \"Cr\"";
+
+// Full per-account breakdown (used by User Performance, Quarter Summary, Cash)
+const COLS_ACCOUNT_FULL = [
+  { key: "code", label: "Code", align: "left" },
+  { key: "name", label: "Name", align: "left" },
+  { key: "strategy", label: "Strategy", align: "left" },
+  { key: "fund", label: "Fund (Cr)", align: "right", numFmt: FUND_FMT },
+  { key: "apr", label: "Apr P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "apr_roi", label: "Apr ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "may", label: "May P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "may_roi", label: "May ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "jun", label: "Jun P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "jun_roi", label: "Jun ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "q1", label: "Q1 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "q1_roi", label: "Q1 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "jul", label: "Jul P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "jul_roi", label: "Jul ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "aug", label: "Aug P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "aug_roi", label: "Aug ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "sep", label: "Sep P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "sep_roi", label: "Sep ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "q2", label: "Q2 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "q2_roi", label: "Q2 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "year", label: "FY P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "year_roi", label: "FY ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+];
+
+// Strategy aggregate table (roi here is already a ×100 percentage number)
+const COLS_STRATEGY = [
+  { key: "strategy", label: "Strategy", align: "left" },
+  { key: "count", label: "Accounts", align: "right", numFmt: "0" },
+  { key: "fund", label: "Fund (Cr)", align: "right", numFmt: "#,##0.00" },
+  { key: "pnl", label: "Q1 Net P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "roi", label: "Q1 ROI %", align: "right", numFmt: "0.00\"%\"", colorCode: true },
+];
+
+const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2", year:"FY" };
+
+function Dashboard() {
+const [theme, setTheme] = useState(() => localStorage.getItem("qd-theme") || "dark");
+
+useEffect(() => {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("qd-theme", theme);
+}, [theme]);
+
+const MUTED_C  = theme === 'dark' ? '#6b8cbb' : '#56688a';
+const AXIS_C   = theme === 'dark' ? '#b0c4de' : '#3a4a63';
+const MUTED2_C = theme === 'dark' ? '#4a6490' : '#8493ad';
+const TIP_BG   = theme === 'dark' ? '#111d33' : '#ffffff';
+const TIP_BORDER = theme === 'dark' ? '#1e2d4a' : '#d5deec';
+
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
 
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
+
+// ── Report / Print state ──
+const [showPrintModal, setShowPrintModal] = useState(false);
+const [printMode, setPrintMode] = useState(false);   // browser print path
+const [reportMode, setReportMode] = useState(false); // off-screen render for PDF capture
+const [reportBusy, setReportBusy] = useState(false);
+const themeBeforeReport = useRef(null);
+const [printSel, setPrintSel] = useState({
+  summary: true, monthly: true, quarterly: true, user: true, strategy: true, cash: false,
+});
+// Browser-print path: render selected sections, fire print dialog, reset.
+useEffect(() => {
+  if (!printMode) return;
+  const t = setTimeout(() => { window.print(); setPrintMode(false); }, 350);
+  const after = () => setPrintMode(false);
+  window.addEventListener("afterprint", after);
+  return () => { clearTimeout(t); window.removeEventListener("afterprint", after); };
+}, [printMode]);
+// PDF-report path: once sections are rendered, capture charts + build the PDF.
+useEffect(() => {
+  if (!reportMode) return;
+  let cancelled = false;
+  const t = setTimeout(async () => {
+    try { await buildPdfReport(); }
+    catch (e) { console.error("Report failed", e); alert("Report generation failed: " + e.message); }
+    finally {
+      if (!cancelled) {
+        setReportMode(false); setReportBusy(false);
+        if (themeBeforeReport.current) setTheme(themeBeforeReport.current); // restore theme
+      }
+    }
+  }, 650); // give Recharts + the light-theme switch time to lay out
+  return () => { cancelled = true; clearTimeout(t); };
+}, [reportMode]);
+const startPrint = () => { setShowPrintModal(false); setPrintMode(true); };
+const startReport = () => {
+  themeBeforeReport.current = theme;
+  setTheme("light");           // captured charts read cleanly on a light page
+  setShowPrintModal(false); setReportBusy(true); setReportMode(true);
+};
+// A section renders when its tab is active, OR during print/report capture when ticked.
+const showSection = (id) => (printMode || reportMode) ? printSel[id] : view === id;
 const [selectedCols, setSelectedCols] = useState({
   code: true,
   name: true,
@@ -202,44 +332,29 @@ const [selectedCols, setSelectedCols] = useState({
   jun_roi: true,
   q1: true,
   q1_roi: true,
+  jul: true,
+  jul_roi: true,
+  q2: true,
+  q2_roi: true,
+  year: true,
+  year_roi: true,
   ann_pnl: true,
   ann_roi: true,
 });
 
-const handleExportExcel = async () => {
+// Generic styled-xlsx exporter — reused by the global modal AND every per-tab button.
+const exportRowsToExcel = async (rows, columns, sheetLabel, fileName) => {
   try {
-    let exportData = [];
-    if (exportScope === "all") {
-      exportData = DATA_ALL;
-    } else if (exportScope === "fo") {
-      exportData = DATA;
-    } else if (exportScope === "cash") {
-      exportData = DATA_CASH;
-    }
-
-    if (!ExcelJS) {
-      alert("ExcelJS library not loaded.");
-      return;
-    }
+    if (!ExcelJS) { alert("ExcelJS library not loaded. Please check your internet connection."); return; }
+    if (!columns || columns.length === 0) { alert("No columns selected to export."); return; }
+    if (!rows || rows.length === 0) { alert("No data to export on this sheet."); return; }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Quant Q1 FY2026-27");
+    const worksheet = workbook.addWorksheet(String(sheetLabel).slice(0, 31));
 
-    const activeCols = EXPORT_COLUMNS.filter(c => selectedCols[c.key]);
-
-    if (activeCols.length === 0) {
-      alert("Please select at least one column to export.");
-      return;
-    }
-
-    worksheet.columns = activeCols.map(col => ({
-      header: col.label,
-      key: col.key,
-      width: 15,
-      style: {
-        font: { name: 'Segoe UI', size: 10 },
-        alignment: { vertical: 'middle', horizontal: col.align }
-      }
+    worksheet.columns = columns.map(col => ({
+      header: col.label, key: col.key, width: 15,
+      style: { font: { name: 'Segoe UI', size: 10 }, alignment: { vertical: 'middle', horizontal: col.align || 'left' } }
     }));
 
     const headerRow = worksheet.getRow(1);
@@ -248,119 +363,306 @@ const handleExportExcel = async () => {
     const headerBg = isDark ? "FF0D1526" : "FFF3F6FB";
     const headerFg = isDark ? "FF00E5FF" : "FF0091B3";
     const headerBorderColor = isDark ? "FF1E2D4A" : "FFD5DEEC";
-
-    activeCols.forEach((colDef, idx) => {
+    columns.forEach((colDef, idx) => {
       const cell = headerRow.getCell(idx + 1);
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: headerBg }
-      };
-      cell.font = {
-        name: 'Segoe UI',
-        size: 11,
-        bold: true,
-        color: { argb: headerFg }
-      };
-      cell.border = {
-        bottom: { style: 'medium', color: { argb: headerBorderColor } }
-      };
-      cell.alignment = {
-        vertical: 'middle',
-        horizontal: colDef.align
-      };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: headerBg } };
+      cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: headerFg } };
+      cell.border = { bottom: { style: 'medium', color: { argb: headerBorderColor } } };
+      cell.alignment = { vertical: 'middle', horizontal: colDef.align || 'left' };
     });
 
-    exportData.forEach((row) => {
+    rows.forEach((row) => {
       const rowData = {};
-      activeCols.forEach(col => {
-        rowData[col.key] = row[col.key] ?? null;
-      });
-
+      columns.forEach(col => { rowData[col.key] = row[col.key] ?? null; });
       const addedRow = worksheet.addRow(rowData);
       addedRow.height = 20;
-
-      activeCols.forEach((colDef, idx) => {
+      columns.forEach((colDef, idx) => {
         const cell = addedRow.getCell(idx + 1);
         const val = row[colDef.key];
-
         cell.border = {
           top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
           right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
         };
-
-        if (colDef.numFmt) {
-          cell.numFmt = colDef.numFmt;
-        }
-
+        if (colDef.numFmt) cell.numFmt = colDef.numFmt;
         if (colDef.colorCode && typeof val === 'number') {
           if (val > 0) {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFE6F4EA' }
-            };
-            cell.font = {
-              name: 'Segoe UI',
-              size: 10,
-              color: { argb: 'FF137333' },
-              bold: true
-            };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F4EA' } };
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF137333' }, bold: true };
           } else if (val < 0) {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFFCE8E6' }
-            };
-            cell.font = {
-              name: 'Segoe UI',
-              size: 10,
-              color: { argb: 'FFC5221F' },
-              bold: true
-            };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE8E6' } };
+            cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FFC5221F' }, bold: true };
           }
         }
       });
     });
 
-    activeCols.forEach((colDef, idx) => {
+    columns.forEach((colDef, idx) => {
       const column = worksheet.getColumn(idx + 1);
-      let maxLen = 12;
+      let maxLen = Math.max(12, String(colDef.label).length + 2);
       column.eachCell({ includeEmpty: true }, cell => {
-        let valStr = '';
-        if (cell.value !== null && cell.value !== undefined) {
-          if (typeof cell.value === 'object' && cell.value.text) {
-            valStr = cell.value.text.toString();
-          } else {
-            valStr = cell.value.toString();
-          }
-        }
-        if (colDef.key && colDef.key.endsWith('_roi')) {
-          valStr += '% +';
-        } else if (colDef.key === 'fund') {
-          valStr += ' Cr ₹';
-        } else if (['apr', 'may', 'jun', 'q1', 'ann_pnl'].includes(colDef.key)) {
-          valStr = '₹+' + valStr + ',000';
-        }
-        
-        if (valStr.length > maxLen) {
-          maxLen = valStr.length;
-        }
+        const valStr = (cell.value === null || cell.value === undefined) ? ''
+          : (typeof cell.value === 'object' && cell.value.text ? cell.value.text.toString() : cell.value.toString());
+        if (valStr.length + 6 > maxLen) maxLen = valStr.length + 6;
       });
-      column.width = Math.min(maxLen + 4, 30);
+      column.width = Math.min(maxLen, 30);
     });
+
+    // Freeze header row for easier scrolling
+    worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    saveAs(blob, `Quant_Q1_FY2026-27_${exportScope.toUpperCase()}.xlsx`);
-
-    setShowExportModal(false);
+    saveAs(blob, fileName);
   } catch (error) {
     console.error("Export failed", error);
     alert("An error occurred during export: " + error.message);
   }
+};
+
+// Global modal export (scope + column picker)
+const handleExportExcel = async () => {
+  const exportData = exportScope === "all" ? DATA_ALL : exportScope === "cash" ? DATA_CASH : DATA;
+  const activeCols = EXPORT_COLUMNS.filter(c => selectedCols[c.key]);
+  await exportRowsToExcel(exportData, activeCols, "Quant FY2026-27", `Quant_FY2026-27_${exportScope.toUpperCase()}.xlsx`);
+  setShowExportModal(false);
+};
+
+// ── Per-tab (per-sheet) exports ──
+const exportUserSheet = () =>
+  exportRowsToExcel(ranked, COLS_ACCOUNT_FULL, "User Performance", "Quant_UserPerformance_FY2026-27.xlsx");
+const exportCashSheet = () =>
+  exportRowsToExcel(cashRanked, COLS_ACCOUNT_FULL, "Cash ETF ATS", "Quant_Cash-ETF-ATS_FY2026-27.xlsx");
+const exportStrategySheet = () =>
+  exportRowsToExcel(strategyData, COLS_STRATEGY, "Strategy Analysis", "Quant_StrategyAnalysis_FY2026-27.xlsx");
+const exportQuarterSheet = () =>
+  exportRowsToExcel(ranked, COLS_ACCOUNT_FULL, "Quarter Summary", "Quant_QuarterSummary_FY2026-27.xlsx");
+const exportMonthlySheet = () => {
+  const key = selectedMonth, roiKey = key + "_roi";
+  const rows = [...DATA].filter(r => Math.abs(r[key]) > 0)
+    .sort((a, b) => (sortBy === "roi" ? b[roiKey] - a[roiKey] : b[key] - a[key]));
+  const lbl = MONTH_LABEL[key] || key;
+  const cols = [
+    { key: "code", label: "Code", align: "left" },
+    { key: "name", label: "Name", align: "left" },
+    { key: "strategy", label: "Strategy", align: "left" },
+    { key: "fund", label: "Fund (Cr)", align: "right", numFmt: FUND_FMT },
+    { key, label: `${lbl} P&L`, align: "right", numFmt: PNL_FMT, colorCode: true },
+    { key: roiKey, label: `${lbl} ROI`, align: "right", numFmt: ROI_FMT, colorCode: true },
+  ];
+  exportRowsToExcel(rows, cols, `Monthly ${lbl}`, `Quant_Monthly_${lbl}_FY2026-27.xlsx`);
+};
+
+// ── PDF REPORT BUILDER ──────────────────────────────────────────────────────
+const buildPdfReport = async () => {
+  const JsPDF = jsPDF;
+  if (!JsPDF) { alert("PDF library not loaded — check your internet connection."); return; }
+
+  const doc = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 40, CONTENT_W = W - M * 2;
+  const DARK = [13, 21, 38], CYAN = [0, 229, 255], GREEN = [22, 163, 74], RED = [225, 29, 72];
+  let cursorY = 120;
+
+  // ASCII-only formatters — jsPDF's standard fonts are Latin-1, so the ₹ glyph
+  // (and any non-Latin char) corrupts the cell. Use "Rs" instead.
+  const pdfNum = (v) => {
+    const a = Math.abs(v);
+    if (a >= 1e7) return (v / 1e7).toFixed(2) + " Cr";
+    if (a >= 1e5) return (v / 1e5).toFixed(2) + " L";
+    if (a >= 1e3) return (v / 1e3).toFixed(1) + " K";
+    return String(Math.round(v));
+  };
+  const pnlStr = (v) => (v >= 0 ? "+Rs " : "-Rs ") + pdfNum(Math.abs(v));
+  const roiStr = (v) => (v * 100).toFixed(2) + "%";
+  const fundStr = (cr) => "Rs " + (cr >= 1 ? cr.toFixed(2) + " Cr" : (cr * 100).toFixed(0) + " L");
+  const ensureSpace = (needed) => { if (cursorY + needed > H - M) { doc.addPage(); cursorY = M; } };
+  let firstSection = true;
+  const sectionTitle = (title) => {
+    if (!firstSection) { doc.addPage(); cursorY = M; }  // each section starts on a new page
+    firstSection = false;
+    ensureSpace(46);
+    doc.setDrawColor(0, 150, 179); doc.setLineWidth(3);
+    doc.line(M, cursorY, M + 24, cursorY);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(20, 30, 50);
+    doc.text(title.toUpperCase(), M + 32, cursorY + 4);
+    cursorY += 20;
+  };
+  const addTable = (head, body, colStyles) => {
+    autoTable(doc, {
+      startY: cursorY, margin: { left: M, right: M }, theme: "striped",
+      head: [head], body,
+      styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: DARK, textColor: CYAN, fontSize: 8 },
+      alternateRowStyles: { fillColor: [244, 246, 251] },
+      columnStyles: colStyles || {},
+      didParseCell: (data) => {
+        if (data.section === "body" && typeof data.cell.raw === "string") {
+          const t = data.cell.raw;
+          if (/^[+-]/.test(t)) data.cell.styles.textColor = t[0] === "-" ? RED : GREEN;
+        }
+      },
+    });
+    cursorY = doc.lastAutoTable.finalY + 22;
+  };
+  const addChart = async (id) => {
+    const el = document.getElementById(id);
+    if (!el || !html2canvas) return;
+    const canvas = await html2canvas(el, { backgroundColor: "#ffffff", scale: 2, logging: false });
+    const imgW = CONTENT_W, imgH = canvas.height * imgW / canvas.width;
+    ensureSpace(imgH + 8);
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", M, cursorY, imgW, imgH);
+    cursorY += imgH + 14;
+  };
+  // Rounded KPI card with an accent bar, label, big value and sub-line.
+  const kpiCard = (x, y, w, h, label, value, sub, accent, valColor) => {
+    doc.setFillColor(247, 249, 252); doc.setDrawColor(226, 232, 242); doc.setLineWidth(0.6);
+    doc.roundedRect(x, y, w, h, 6, 6, "FD");
+    doc.setFillColor(accent[0], accent[1], accent[2]); doc.roundedRect(x, y + 6, 4, h - 12, 2, 2, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(120, 133, 152);
+    doc.text(label.toUpperCase(), x + 16, y + 17);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(valColor[0], valColor[1], valColor[2]);
+    doc.text(value, x + 16, y + 37);
+    if (sub) { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(130, 142, 160); doc.text(sub, x + 16, y + 51); }
+  };
+  // Leaderboard row: rank badge + name/strategy on the left, ROI + P&L on the right.
+  const leaderRow = (x, y, w, rank, name, strat, roi, pnl, positive, badge) => {
+    const h = 30, col = positive ? GREEN : RED;
+    doc.setFillColor(247, 249, 252); doc.setDrawColor(226, 232, 242); doc.setLineWidth(0.5);
+    doc.roundedRect(x, y, w, h, 5, 5, "FD");
+    doc.setFillColor(badge[0], badge[1], badge[2]); doc.circle(x + 16, y + h / 2, 9, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+    doc.text(String(rank), x + 16, y + h / 2 + 3, { align: "center" });
+    doc.setFontSize(9.5); doc.setTextColor(20, 30, 50);
+    doc.text(doc.splitTextToSize(name, w - 130)[0], x + 30, y + 13);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120, 133, 152);
+    doc.text((strat || "-").slice(0, 22), x + 30, y + 23);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(col[0], col[1], col[2]);
+    doc.text(roi, x + w - 12, y + 13, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(90, 105, 125);
+    doc.text(pnl, x + w - 12, y + 24, { align: "right" });
+  };
+
+  try {
+    // Cover band
+    doc.setFillColor(DARK[0], DARK[1], DARK[2]); doc.rect(0, 0, W, 96, "F");
+    doc.setTextColor(0, 229, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+    doc.text("Quant Strategy Dashboard", M, 42);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(210, 220, 235);
+    doc.text("FY 2026-27   |   Q1 + Q2 Performance Report   |   April - September 2026", M, 64);
+    doc.setFontSize(9); doc.setTextColor(150, 165, 185);
+    doc.text("Generated " + new Date().toLocaleString("en-IN"), M, 82);
+
+    if (printSel.summary) {
+      sectionTitle("Executive Summary");
+      const NAVY = [20, 30, 50], VIOLET = [124, 92, 255];
+      const gr = (v) => (v >= 0 ? GREEN : RED);
+
+      // ── Hero banner: headline FY Net P&L ──
+      const heroH = 62, hero = gr(totals.fyPnL);
+      doc.setFillColor(totals.fyPnL >= 0 ? 236 : 253, totals.fyPnL >= 0 ? 248 : 236, totals.fyPnL >= 0 ? 240 : 236);
+      doc.roundedRect(M, cursorY, CONTENT_W, heroH, 8, 8, "F");
+      doc.setFillColor(hero[0], hero[1], hero[2]); doc.roundedRect(M, cursorY, 6, heroH, 3, 3, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(90, 105, 125);
+      doc.text("FY NET P&L  (YTD, Q1 + Q2)", M + 22, cursorY + 22);
+      doc.setFontSize(24); doc.setTextColor(hero[0], hero[1], hero[2]);
+      doc.text(pnlStr(totals.fyPnL), M + 22, cursorY + 48);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(70, 84, 104);
+      doc.text("ROI " + roiStr(totals.fyROI), W - M - 22, cursorY + 26, { align: "right" });
+      doc.setFontSize(9); doc.setTextColor(110, 124, 144);
+      doc.text(totals.count + " accounts  |  " + totals.winners + " winners / " + totals.losers + " losers",
+        W - M - 22, cursorY + 44, { align: "right" });
+      cursorY += heroH + 16;
+
+      // ── KPI cards (2 x 2) ──
+      const gapX = 16, gapY = 14, cardH = 62, cardW = (CONTENT_W - gapX) / 2;
+      const cards = [
+        ["Total AUM (Utilized)", fundStr(totals.totalFund), totals.count + " accounts", CYAN, NAVY],
+        ["FY ROI (YTD)", roiStr(totals.fyROI), "Q1 + Q2 combined", CYAN, gr(totals.fyROI)],
+        ["Q1 Net P&L (Apr-Jun)", pnlStr(totals.q1PnL), "ROI " + roiStr(totals.q1ROI), gr(totals.q1PnL), gr(totals.q1PnL)],
+        ["Q2 Net P&L (Jul-Sep)", pnlStr(totals.q2PnL), "ROI " + roiStr(totals.q2ROI), gr(totals.q2PnL), gr(totals.q2PnL)],
+      ];
+      cards.forEach((c, i) => kpiCard(
+        M + (i % 2) * (cardW + gapX), cursorY + Math.floor(i / 2) * (cardH + gapY),
+        cardW, cardH, c[0], c[1], c[2], c[3], c[4]));
+      cursorY += 2 * (cardH + gapY) + 8;
+    }
+
+    if (printSel.monthly) {
+      sectionTitle("Monthly Performance");
+      await addChart("rpt-monthly-pnl");
+      await addChart("rpt-monthly-roi");
+      const fund = totals.totalFund, mroi = (p) => fund > 0 ? p / (fund * 1e7) : 0;
+      const grM = (v) => (v >= 0 ? GREEN : RED);
+      const cH = 56, rowGap = 12;
+      ensureSpace(50 + rowGap + 2 * (cH + rowGap) + 6);
+      // Yearly P&L on top (full-width)
+      kpiCard(M, cursorY, CONTENT_W, 50, "FY (YTD) Net P&L  -  Q1 + Q2",
+        pnlStr(totals.fyPnL), "ROI " + roiStr(mroi(totals.fyPnL)), CYAN, grM(totals.fyPnL));
+      cursorY += 50 + rowGap;
+      // Q1 row, then Q2 row (July starts a new row)
+      const gx = 10, cW = (CONTENT_W - 3 * gx) / 4;
+      const drawRow = (arr, ry) => arr.forEach((m, i) => kpiCard(
+        M + i * (cW + gx), ry, cW, cH, m[0], pnlStr(m[1]), "ROI " + roiStr(mroi(m[1])),
+        m[2] ? CYAN : grM(m[1]), grM(m[1])));
+      drawRow([["April", totals.aprPnL], ["May", totals.mayPnL], ["June", totals.junPnL], ["Q1 Total", totals.q1PnL, true]], cursorY);
+      drawRow([["July", totals.julPnL], ["August", totals.augPnL], ["September", totals.sepPnL], ["Q2 Total", totals.q2PnL, true]], cursorY + cH + rowGap);
+      cursorY += 2 * (cH + rowGap) + 4;
+    }
+
+    if (printSel.quarterly) {
+      sectionTitle("Quarter Summary - Top / Bottom (Q1 ROI)");
+      const colGap = 20, colW = (CONTENT_W - colGap) / 2;
+      const leftX = M, rightX = M + colW + colGap;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.text("TOP 5 PERFORMERS", leftX, cursorY);
+      doc.setTextColor(RED[0], RED[1], RED[2]); doc.text("BOTTOM 5 PERFORMERS", rightX, cursorY);
+      cursorY += 8;
+      const rowH = 30, rowGap = 8, gold = [212, 160, 23], slate = [100, 116, 139];
+      top5.forEach((r, i) => leaderRow(leftX, cursorY + i * (rowH + rowGap), colW, i + 1,
+        r.name, r.strategy || "-", roiStr(r.q1_roi), pnlStr(r.q1), true, i === 0 ? gold : slate));
+      bot5.forEach((r, i) => leaderRow(rightX, cursorY + i * (rowH + rowGap), colW, i + 1,
+        r.name, r.strategy || "-", roiStr(r.q1_roi), pnlStr(r.q1), false, RED));
+      cursorY += 5 * (rowH + rowGap) + 6;
+    }
+
+    if (printSel.user) {
+      sectionTitle("User Performance (Q1 / Q2 / FY)");
+      addTable(["#", "Code", "Name", "Strategy", "Fund", "Q1 P&L", "Q1 ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"],
+        ranked.map((r, i) => [String(i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+          pnlStr(r.q1), roiStr(r.q1_roi), pnlStr(r.q2), roiStr(r.q2_roi), pnlStr(r.year), roiStr(r.year_roi)]),
+        { 2: { cellWidth: 78 } });
+    }
+
+    if (printSel.strategy) {
+      sectionTitle("Strategy Analysis");
+      await addChart("rpt-strategy-pnl");
+      doc.addPage(); cursorY = M;   // keep the full strategy table together on its own page
+      addTable(["Strategy", "Accounts", "Fund (Cr)", "Q1 Net P&L", "Q1 ROI %"],
+        strategyData.map(s => [s.strategy, String(s.count), s.fund.toFixed(2), pnlStr(s.pnl), s.roi.toFixed(2) + "%"]),
+        { 0: { cellWidth: 130, fontStyle: "bold", textColor: [20, 30, 50] } });
+    }
+
+    if (printSel.cash) {
+      sectionTitle("Cash / ETF / ATS");
+      addTable(["#", "Code", "Name", "Strategy", "Fund", "Apr", "May", "Jun", "Q1 P&L", "Q1 ROI"],
+        cashRanked.map((r, i) => [String(i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+          pnlStr(r.apr), pnlStr(r.may), pnlStr(r.jun), pnlStr(r.q1), roiStr(r.q1_roi)]),
+        { 2: { cellWidth: 90 } });
+    }
+
+    // Footer page numbers
+    const pages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      doc.setPage(p);
+      doc.setFontSize(8); doc.setTextColor(150, 160, 175);
+      doc.text("Quant Strategy FY2026-27  -  Confidential", M, H - 18);
+      doc.text("Page " + p + " / " + pages, W - M - 55, H - 18);
+    }
+    doc.save("Quant_Dashboard_Report_FY2026-27.pdf");
+  } finally { /* theme is restored by the report effect */ }
 };
 
 // ── Summary stats ──
@@ -374,13 +676,21 @@ const totals = useMemo(() => {
   const q1ROI = totalFund > 0 ? q1PnL / (totalFund * 1e7) : 0;
   const annROI = q1ROI * ANN_FACTOR;
   const annPnL = q1PnL * ANN_FACTOR;
+  // Q2 (Jul–Sep) and full-year-to-date (Q1 + Q2)
+  const julPnL = normalSection.reduce((s, r) => s + r.jul, 0);
+  const augPnL = normalSection.reduce((s, r) => s + r.aug, 0);
+  const sepPnL = normalSection.reduce((s, r) => s + r.sep, 0);
+  const q2PnL = julPnL + augPnL + sepPnL;
+  const q2ROI = totalFund > 0 ? q2PnL / (totalFund * 1e7) : 0;
+  const fyPnL = q1PnL + q2PnL;
+  const fyROI = totalFund > 0 ? fyPnL / (totalFund * 1e7) : 0;
   const winners = normalSection.filter(r => r.q1 > 0).length;
   const losers = normalSection.filter(r => r.q1 < 0).length;
   const count = normalSection.length;
-  return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL, winners, losers, count };
+  return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL,
+    julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count };
 }, []); // ── Month bar data (top 20 by absolute PnL) ──
-    const monthKey=selectedMonth==="q1" ? "q1" : selectedMonth; const monthROIKey=selectedMonth==="q1" ? "q1_roi" :
-    selectedMonth + "_roi" ; const barData=useMemo(()=> {
+    const monthKey=selectedMonth; const monthROIKey=selectedMonth + "_roi"; const barData=useMemo(()=> {
     const sorted = [...DATA]
     .filter(r => Math.abs(r[monthKey]) > 0)
     .sort((a, b) => {
@@ -389,10 +699,10 @@ const totals = useMemo(() => {
     })
     .slice(0, 25);
     return sorted.map(r => ({
-    name: r.name.length > 12 ? r.name.slice(0, 12) + "…" : r.name,
+    name: r.name,
     fullName: r.name,
     pnl: r[monthKey],
-    roi: +(r[monthROIKey] * ANN_FACTOR * 100).toFixed(2), // annualized
+    roi: +(r[monthROIKey] * 100).toFixed(2), // actual ROI (monthly or Q1), no projection
     fund: r.fund,
     }));
     }, [selectedMonth, sortBy, monthKey, monthROIKey]);
@@ -436,30 +746,33 @@ const totals = useMemo(() => {
     });
     return Object.values(map)
     .sort((a, b) => b.pnl - a.pnl)
-    .map(s => ({ ...s, roi: s.fund > 0 ? s.pnl / (s.fund * 1e7) : 0 }));
+    .map(s => ({ ...s, roi: s.fund > 0 ? (s.pnl / (s.fund * 1e7)) * 100 : 0 }));
     }, []);
 
-    // ── Monthly trend ──
+    // ── Monthly trend (Apr–Sep; Q2 months appear once data lands) ──
+    const roiOf = (p) => totals.totalFund > 0 ? p / (totals.totalFund * 1e7) : 0;
     const trendData = [
-    { month: "April", pnl: totals.aprPnL, roi: totals.totalFund > 0 ? totals.aprPnL / (totals.totalFund * 1e7) : 0 },
-    { month: "May", pnl: totals.mayPnL, roi: totals.totalFund > 0 ? totals.mayPnL / (totals.totalFund * 1e7) : 0 },
-    { month: "June", pnl: totals.junPnL, roi: totals.totalFund > 0 ? totals.junPnL / (totals.totalFund * 1e7) : 0 },
+    { month: "Apr", pnl: totals.aprPnL, roi: roiOf(totals.aprPnL) },
+    { month: "May", pnl: totals.mayPnL, roi: roiOf(totals.mayPnL) },
+    { month: "Jun", pnl: totals.junPnL, roi: roiOf(totals.junPnL) },
+    { month: "Jul", pnl: totals.julPnL, roi: roiOf(totals.julPnL) },
+    { month: "Aug", pnl: totals.augPnL, roi: roiOf(totals.augPnL) },
+    { month: "Sep", pnl: totals.sepPnL, roi: roiOf(totals.sepPnL) },
     ];
 
     const tabs = [
     { id: "monthly", label: "Monthly Report" },
-    { id: "quarterly", label: "Q1 Summary" },
+    { id: "quarterly", label: "Quarter Summary" },
     { id: "user", label: "User Performance" },
     { id: "strategy", label: "Strategy Analysis" },
     { id: "cash", label: "💰 Cash / ETF / ATS" },
-    { id: "yearly", label: "📅 Annual ROI Projection" },
     ];
 
     const tabStyle = (id) => ({
     padding: "9px 20px", borderRadius: 8, cursor: "pointer", fontWeight: 700,
     fontSize: 13, border: "none", letterSpacing: 0.5,
     background: view === id ? ACCENT : "transparent",
-    color: view === id ? "#000" : "#6b8cbb",
+    color: view === id ? "#000" : "var(--muted)",
     transition: "all 0.2s",
     });
 
@@ -471,15 +784,15 @@ const totals = useMemo(() => {
     );
 
     return (
-    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "#e2eaf7" ,
+    <div style={{ background: BG, minHeight: "100vh" , fontFamily: "'DM Sans', sans-serif" , color: "var(--text)" ,
         padding: "0 0 60px" }}>
         <link
             href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=DM+Mono:wght@400;500;700&display=swap"
             rel="stylesheet" />
 
+
         {/* Header */}
-        <div style={{ background: "linear-gradient(135deg, #0d1526 0%, #0a1020 100%)" , borderBottom: `1px solid
-            ${BORDER}`, padding: "24px 32px 20px" }}>
+        <div style={{ background: "var(--header-bg)", borderBottom: `1px solid ${BORDER}`, padding: "24px 32px 20px" }}>
             <div style={{ display: "flex" , alignItems: "center" , justifyContent: "space-between" , flexWrap: "wrap" ,
                 gap: 12 }}>
                 <div>
@@ -488,12 +801,27 @@ const totals = useMemo(() => {
                         <div>
                             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5 }}>Quant Strategy
                                 Dashboard</h1>
-                            <div style={{ color: "#4a6490" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 Performance
-                                Report · April – June 2026</div>
+                            <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 + Q2
+                                Performance Report · April – September 2026</div>
                         </div>
                     </div>
                 </div>
-                <div style={{ display: "flex" , gap: 12, alignItems: "center" }}>
+                <div className="no-print" style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                    <button
+                        onClick={() => setShowPrintModal(true)}
+                        title="Generate a PDF report of selected sections"
+                        style={{
+                            display: "flex", alignItems: "center", gap: 8,
+                            background: "rgba(167, 139, 250, 0.12)",
+                            border: "1px solid var(--violet)", color: "var(--violet)",
+                            borderRadius: 8, padding: "9px 16px", cursor: "pointer",
+                            fontSize: 12, fontWeight: 700, transition: "all 0.2s ease-in-out", outline: "none"
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--violet)"; e.currentTarget.style.color = "#000"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(167, 139, 250, 0.12)"; e.currentTarget.style.color = "var(--violet)"; }}
+                    >
+                        <span style={{ fontSize: 14 }}>📄</span> Report
+                    </button>
                     <button
                         onClick={() => setShowExportModal(true)}
                         style={{
@@ -526,42 +854,55 @@ const totals = useMemo(() => {
                         <span style={{ fontSize: 14 }}>📥</span> Export Excel
                     </button>
 
-                    <div style={{ background: totals.q1PnL>= 0 ? "rgba(34,197,94,0.15)" : "rgba(244,63,94,0.15)",
-                        border: `1px solid ${totals.q1PnL >= 0 ? POS : NEG}`, borderRadius: 8, padding: "8px 16px",
+                    <button
+                        className="theme-toggle"
+                        onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+                        aria-label="Toggle light / dark theme"
+                        title="Toggle light / dark theme"
+                    >
+                        {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                    </button>
+
+                    <div style={{ background: totals.fyPnL>= 0 ? "rgba(34,197,94,0.15)" : "rgba(244,63,94,0.15)",
+                        border: `1px solid ${totals.fyPnL >= 0 ? POS : NEG}`, borderRadius: 8, padding: "8px 16px",
                         textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#6b8cbb" , fontWeight: 700, letterSpacing: 2 }}>Q1 NET P&L
-                        </div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: totals.q1PnL>= 0 ? POS : NEG, fontFamily:
-                            "'DM Mono', monospace" }}>{fmtSign(totals.q1PnL)}</div>
+                        <div style={{ fontSize: 10, color: "var(--muted)" , fontWeight: 700, letterSpacing: 2 }}>FY NET P&L
+                            (YTD)</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: totals.fyPnL>= 0 ? POS : NEG, fontFamily:
+                            "'DM Mono', monospace" }}>{fmtSign(totals.fyPnL)}</div>
                     </div>
                 </div>
             </div>
 
             {/* KPI Row */}
-            <div style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" , gap: 12,
+            {(!printMode || printSel.summary) && (
+            <div className="print-section" style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" , gap: 12,
                 marginTop: 20 }}>
                 <StatCard label="Total AUM" value={fmtFund(totals.totalFund)}
                     sub="Total Utilized Fund" color={ACCENT} />
-                <StatCard label="Q1 Net ROI" value={fmtROI(totals.q1ROI)} sub="Apr + May + Jun (3 months)"
-                    color={totals.q1ROI>= 0 ? POS : NEG} />
-                    <StatCard label="Projected Annual ROI" value={fmtROI(totals.annROI)} sub="Q1 ROI × 4 (annualized)"
-                        color={totals.annROI>= 0 ? "#fbbf24" : NEG} />
-                        <StatCard label="Projected Annual P&L" value={fmtSign(totals.annPnL)} sub="Based on Q1 run-rate"
-                            color={totals.annPnL>= 0 ? "#fbbf24" : NEG} />
+                <StatCard label="Q1 Net P&L" value={fmtSign(totals.q1PnL)} sub={`ROI ${fmtROI(totals.q1ROI)} · Apr–Jun`}
+                    color={totals.q1PnL>= 0 ? POS : NEG} />
+                <StatCard label="Q2 Net P&L" value={fmtSign(totals.q2PnL)} sub={`ROI ${fmtROI(totals.q2ROI)} · Jul–Sep`}
+                    color={totals.q2PnL>= 0 ? POS : NEG} />
+                <StatCard label="FY Net P&L (YTD)" value={fmtSign(totals.fyPnL)} sub={`ROI ${fmtROI(totals.fyROI)} · Q1 + Q2`}
+                    color={totals.fyPnL>= 0 ? POS : NEG} />
                             <StatCard label="April P&L" value={fmtSign(totals.aprPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.aprPnL /
                                 (totals.totalFund * 1e7) : 0)} color={totals.aprPnL>= 0 ? POS : NEG} />
                                 <StatCard label="May P&L" value={fmtSign(totals.mayPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.mayPnL /
                                     (totals.totalFund * 1e7) : 0)} color={totals.mayPnL>= 0 ? POS : NEG} />
                                     <StatCard label="June P&L" value={fmtSign(totals.junPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.junPnL
                                         / (totals.totalFund * 1e7) : 0)} color={totals.junPnL>= 0 ? POS : NEG} />
+                                    <StatCard label="July P&L" value={fmtSign(totals.julPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.julPnL
+                                        / (totals.totalFund * 1e7) : 0)} color={totals.julPnL>= 0 ? POS : NEG} />
                                         <StatCard label="Winners / Losers" value={`${totals.winners} /
                                             ${totals.losers}`} sub={`${totals.count} total accounts`} color="#a78bfa" />
             </div>
+            )}
         </div>
 
         {/* Tabs */}
-        <div style={{ padding: "16px 32px 0" , display: "flex" , gap: 6, borderBottom: `1px solid ${BORDER}`,
-            background: "#080e1c" }}>
+        <div className="no-print" style={{ padding: "16px 32px 0" , display: "flex" , gap: 6, borderBottom: `1px solid ${BORDER}`,
+            background: "var(--panel)" }}>
             {tabs.map(t => (
             <button key={t.id} style={tabStyle(t.id)} onClick={()=> setView(t.id)}>{t.label}</button>
             ))}
@@ -570,19 +911,22 @@ const totals = useMemo(() => {
         <div style={{ padding: "28px 32px" }}>
 
             {/* ── MONTHLY ── */}
-            {view === "monthly" && (
-            <div>
+            {showSection("monthly") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportMonthlySheet} label="Export Monthly Sheet" />
+                </div>
                 {sectionHead("Monthly P&L Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 32 }}>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                    <div id="rpt-monthly-pnl" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <BarChart data={trendData} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -592,15 +936,15 @@ const totals = useMemo(() => {
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                    <div id="rpt-monthly-roi" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={220}>
                             <LineChart data={trendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -614,23 +958,25 @@ const totals = useMemo(() => {
                 {/* Month selector + bar chart */}
                 {sectionHead("Per-User Performance by Period")}
                 <div style={{ display: "flex" , gap: 10, marginBottom: 16, alignItems: "center" , flexWrap: "wrap" }}>
-                    {[{ id: "apr", label: "April" }, { id: "may", label: "May" }, { id: "jun", label: "June" }, { id:
-                    "q1", label: "Q1 Total" }].map(m => (
+                    {[{ id: "apr", label: "April" }, { id: "may", label: "May" }, { id: "jun", label: "June" },
+                    { id: "q1", label: "Q1 Total" }, { id: "jul", label: "July" }, { id: "aug", label: "Aug" },
+                    { id: "sep", label: "Sep" }, { id: "q2", label: "Q2 Total" },
+                    { id: "year", label: "Yearly (FY)" }].map(m => (
                     <button key={m.id} onClick={()=> setSelectedMonth(m.id)} style={{
                         padding: "6px 16px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                         fontSize: 12, fontWeight: 700,
                         background: selectedMonth === m.id ? ACCENT : CARD, color: selectedMonth === m.id ? "#000" :
-                        "#6b8cbb",
+                        MUTED_C,
                         }}>{m.label}</button>
                     ))}
                     <div style={{ marginLeft: "auto" , display: "flex" , gap: 8 }}>
-                        <span style={{ color: "#6b8cbb" , fontSize: 12, alignSelf: "center" }}>Sort:</span>
+                        <span style={{ color: MUTED_C , fontSize: 12, alignSelf: "center" }}>Sort:</span>
                         {["roi", "pnl"].map(s => (
                         <button key={s} onClick={()=> setSortBy(s)} style={{
                             padding: "6px 14px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
                             fontSize: 12,
-                            background: sortBy === s ? "#1e2d4a" : "transparent", color: sortBy === s ? ACCENT :
-                            "#6b8cbb",
+                            background: sortBy === s ? BORDER : "transparent", color: sortBy === s ? ACCENT :
+                            MUTED_C,
                             }}>{s.toUpperCase()}</button>
                         ))}
                     </div>
@@ -638,24 +984,24 @@ const totals = useMemo(() => {
 
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                     <ResponsiveContainer width="100%" height={420}>
-                        <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 100 }}>
+                        <BarChart data={barData} layout="vertical" barSize={16} margin={{ left: 160 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 11 }}
-                                    axisLine={false} tickLine={false} width={100} />
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                    interval={0} width={160} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload, label })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700, marginBottom: 4 }}>{d?.fullName}
                                         </div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>P&L: {fmt(d?.pnl)}</div>
-                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Annual ROI: {d?.roi?.toFixed(2)}%
+                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>ROI: {d?.roi?.toFixed(2)}%
                                         </div>
-                                        <div style={{ color: "#6b8cbb" }}>Fund: ₹{d?.fund} Cr</div>
+                                        <div style={{ color: MUTED_C }}>Fund: ₹{d?.fund} Cr</div>
                                     </div>
                                     );
                                     }} />
@@ -670,8 +1016,11 @@ const totals = useMemo(() => {
             )}
 
             {/* ── QUARTERLY ── */}
-            {view === "quarterly" && (
-            <div>
+            {showSection("quarterly") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportQuarterSheet} label="Export Quarter Sheet" />
+                </div>
                 {sectionHead("Q1 2026–27 Consolidated Report (Apr + May + Jun)")}
 
                 {/* Best vs Worst */}
@@ -679,7 +1028,7 @@ const totals = useMemo(() => {
                     {/* Top 5 */}
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                         <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            🏆 TOP 5 PERFORMERS — ANNUAL ROI (projected)</div>
+                            🏆 TOP 5 PERFORMERS — Q1 ROI</div>
                         {top5.map((r, i) => (
                         <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
                             alignItems: "center" , padding: "10px 0" , borderBottom: i < top5.length - 1 ? `1px solid ${BORDER}`
@@ -689,15 +1038,15 @@ const totals = useMemo(() => {
                                     color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.ann_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmtSign(r.q1)}</div>
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmtSign(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -706,7 +1055,7 @@ const totals = useMemo(() => {
                     {/* Bot 5 */}
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                         <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
-                            ⚠️ BOTTOM 5 PERFORMERS — ANNUAL ROI (projected)</div>
+                            ⚠️ BOTTOM 5 PERFORMERS — Q1 ROI</div>
                         {bot5.map((r, i) => (
                         <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
                             alignItems: "center" , padding: "10px 0" , borderBottom: i < bot5.length - 1 ? `1px solid ${BORDER}`
@@ -716,15 +1065,15 @@ const totals = useMemo(() => {
                                     color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
                                     alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{r.name}</div>
-                                    <div style={{ color: "#4a6490" , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
                                     </div>
                                 </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
                                 <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
-                                    fontSize: 14 }}>{fmtROI(r.ann_roi)}</div>
-                                <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{fmt(r.q1)}</div>
+                                    fontSize: 14 }}>{fmtROI(r.q1_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmt(r.q1)}</div>
                             </div>
                         </div>
                         ))}
@@ -732,31 +1081,31 @@ const totals = useMemo(() => {
                 </div>
 
                 {/* Full Q1 bar */}
-                {sectionHead("Full Q1 P&L & Projected Annual ROI — Best to Worst (F&O Only)")}
+                {sectionHead("Full Q1 P&L & ROI — Best to Worst (F&O Only)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                     <ResponsiveContainer width="100%" height={Math.max(500, ranked.length * 22)}>
-                        <BarChart data={ranked.map(r=> ({ name: r.name.length > 14 ? r.name.slice(0, 14) + "…" : r.name,
-                            pnl: r.q1, roi: +(r.ann_roi * 100).toFixed(2), fund: r.fund, fullName: r.name }))}
-                            layout="vertical" barSize={14} margin={{ left: 110 }}>
+                        <BarChart data={ranked.map(r=> ({ name: r.name,
+                            pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name }))}
+                            layout="vertical" barSize={14} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 10 }}
-                                    axisLine={false} tickLine={false} width={110} />
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                    interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
                                         <div style={{ color: ACCENT, fontWeight: 700 }}>{d?.fullName}</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
-                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Annual ROI: {d?.roi?.toFixed(2)}%
+                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
                                         </div>
                                     </div>
                                     );
                                     }} />
-                                    <ReferenceLine x={0} stroke="#334155" />
+                                    <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
                                         {ranked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? POS : NEG} />)}
                                     </Bar>
@@ -774,20 +1123,20 @@ const totals = useMemo(() => {
                     <ResponsiveContainer width="100%" height={Math.max(250, cashRanked.length * 35)}>
                         <BarChart data={cashRanked.map(r=> ({ name: r.name,
                             pnl: r.q1, roi: +(r.q1_roi * 100).toFixed(2), fund: r.fund, fullName: r.name, strategy: r.strategy }))}
-                            layout="vertical" barSize={16} margin={{ left: 110 }}>
+                            layout="vertical" barSize={16} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                            <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 12 }}
-                                interval={0} width={110} axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                interval={0} width={165} axisLine={false} tickLine={false} />
                             <Tooltip content={({ active, payload })=> {
                                 if (!active || !payload?.length) return null;
                                 const d = payload[0]?.payload;
                                 return (
-                                <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                     8, padding: "10px 14px" , fontSize: 12 }}>
-                                    <div style={{ color: "#fbbf24" , fontWeight: 700 }}>{d?.fullName}</div>
-                                    <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{d?.strategy || "—"} ·
+                                    <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
+                                    <div style={{ color: MUTED_C , fontSize: 11 }}>{d?.strategy || "—"} ·
                                         ₹{d?.fund}Cr</div>
                                     <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
                                     <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
@@ -797,7 +1146,7 @@ const totals = useMemo(() => {
                                 }} />
                             <ReferenceLine x={0} stroke={BORDER} />
                             <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
-                                {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "#fbbf24" : NEG} />)}
+                                {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "var(--gold)" : NEG} />)}
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
@@ -806,53 +1155,52 @@ const totals = useMemo(() => {
             )}
 
             {/* ── USER PERFORMANCE ── */}
-            {view === "user" && (
-            <div>
+            {showSection("user") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportUserSheet} label="Export User Sheet" />
+                </div>
                 {sectionHead("User-Wise Performance Table")}
-                <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
-                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
+            <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
+                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
-                                {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May
-                                ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI", "Annual ROI*", "Annual P&L*"].map(h => (
-                                <th key={h} style={{ padding: "12px 10px" , textAlign: "left" , color: "#6b8cbb" ,
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
+                                {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI", "Jul P&L", "Jul ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"].map(h => (
+                                <th key={h} style={{ padding: "11px 10px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {ranked.map((r, i) => {
-                            const rowBg = i % 2 === 0 ? CARD : "#0d1423";
+                            const rowBg = i % 2 === 0 ? CARD : "var(--row-alt)";
                             return (
                             <tr key={r.code} style={{ background: rowBg, borderBottom: `1px solid ${BORDER}22` }}>
-                                <td style={{ padding: "10px" , color: "#4a6490" }}>{i + 1}</td>
-                                <td style={{ padding: "10px" , color: ACCENT, fontFamily: "'DM Mono', monospace" ,
+                                <td style={{ padding: "9px 10px" , color: "var(--muted2)" }}>{i + 1}</td>
+                                <td style={{ padding: "9px 10px" , color: ACCENT, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 11 }}>{r.code}</td>
-                                <td style={{ padding: "10px" , fontWeight: 600, whiteSpace: "nowrap" }}>{r.name}</td>
-                                <td style={{ padding: "10px" , color: "#6b8cbb" , fontSize: 11 }}>{r.strategy || "—"}
+                                <td style={{ padding: "9px 10px" , fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>{r.name}</td>
+                                <td style={{ padding: "9px 10px" , color: "var(--muted)" , fontSize: 11 }}>{r.strategy || "—"}
                                 </td>
-                                <td style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" , color: "#94a3b8" }}>
+                                <td style={{ padding: "9px 10px" , fontFamily: "'DM Mono', monospace" , color: "var(--axis)" }}>
                                     {r.fund}</td>
                                 {[
                                 [r.apr, r.apr_roi],
                                 [r.may, r.may_roi],
                                 [r.jun, r.jun_roi],
                                 [r.q1, r.q1_roi],
+                                [r.jul, r.jul_roi],
+                                [r.q2, r.q2_roi],
+                                [r.year, r.year_roi],
                                 ].map(([pnl, roi], j) => (
                                 <>
-                                    <td key={`pnl${j}`} style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" ,
-                                        color: pnl>= 0 ? POS : NEG, whiteSpace: "nowrap" }}>{pnl === 0 ? "—" :
+                                    <td key={`pnl${j}`} style={{ padding: "9px 10px" , fontFamily: "'DM Mono', monospace" ,
+                                        color: pnl>= 0 ? POS : NEG, whiteSpace: "nowrap", fontWeight: pnl !== 0 ? 700 : 400 }}>{pnl === 0 ? "—" :
                                         fmtSign(pnl)}</td>
-                                    <td key={`roi${j}`} style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" ,
-                                        color: roi>= 0 ? POS : NEG }}>{roi === 0 ? "—" : fmtROI(roi)}</td>
+                                    <td key={`roi${j}`} style={{ padding: "9px 10px" , fontFamily: "'DM Mono', monospace" ,
+                                        color: roi>= 0 ? POS : NEG, fontWeight: roi !== 0 ? 700 : 400 }}>{roi === 0 ? "—" : fmtROI(roi)}</td>
                                 </>
                                 ))}
-                                <td style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" , color: r.ann_roi>= 0
-                                    ? "#fbbf24" : NEG, fontWeight: 700 }}>{r.q1_roi === 0 ? "—" : fmtROI(r.ann_roi)}
-                                </td>
-                                <td style={{ padding: "10px" , fontFamily: "'DM Mono', monospace" , color: r.ann_pnl>= 0
-                                    ? "#fbbf24" : NEG, whiteSpace: "nowrap" }}>{r.q1 === 0 ? "—" : fmtSign(r.ann_pnl)}
-                                </td>
                             </tr>
                             );
                             })}
@@ -863,21 +1211,24 @@ const totals = useMemo(() => {
             )}
 
             {/* ── STRATEGY ── */}
-            {view === "strategy" && (
-            <div>
+            {showSection("strategy") && (
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportStrategySheet} label="Export Strategy Sheet" />
+                </div>
                 {sectionHead("Strategy-Wise Q1 Performance")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
+                    <div id="rpt-strategy-pnl" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
                             P&L — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
-                            <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 90
+                            <BarChart data={strategyData.slice(0, 14)} layout="vertical" barSize={18} margin={{ left: 120
                                 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=>
                                     fmt(v)} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
-                                        axisLine={false} tickLine={false} width={90} />
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                        interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="pnl" name="Q1 P&L" radius={[0, 4, 4, 0]}>
@@ -889,16 +1240,16 @@ const totals = useMemo(() => {
                     </div>
 
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY ROI
                             % — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
                             <BarChart data={strategyData.filter(d=> d.fund > 0).slice(0, 14)} layout="vertical"
-                                barSize={18} margin={{ left: 90 }}>
+                                barSize={18} margin={{ left: 120 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                                <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 10 }} tickFormatter={v=>
+                                <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=>
                                     `${v}%`} axisLine={false} tickLine={false} />
-                                    <YAxis type="category" dataKey="strategy" tick={{ fill: "#b0c4de" , fontSize: 10 }}
-                                        axisLine={false} tickLine={false} width={90} />
+                                    <YAxis type="category" dataKey="strategy" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                        interval={0} width={120} axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine x={0} stroke={BORDER} />
                                     <Bar dataKey="roi" name="ROI %" radius={[0, 4, 4, 0]}>
@@ -912,28 +1263,28 @@ const totals = useMemo(() => {
 
                 {/* Strategy table */}
                 <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
-                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
+                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
                                 {["Strategy", "Accounts", "Fund (Cr)", "Q1 Net P&L", "Q1 ROI", "Status"].map(h => (
-                                <th key={h} style={{ padding: "12px 14px" , textAlign: "left" , color: "#6b8cbb" ,
+                                <th key={h} style={{ padding: "11px 14px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1 }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {strategyData.map((s, i) => (
-                            <tr key={s.strategy} style={{ background: i % 2===0 ? CARD : "#0d1423" , borderBottom: `1px
+                            <tr key={s.strategy} style={{ background: i % 2===0 ? CARD : "var(--row-alt)" , borderBottom: `1px
                                 solid ${BORDER}22` }}>
-                                <td style={{ padding: "10px 14px" , fontWeight: 700 }}>{s.strategy}</td>
-                                <td style={{ padding: "10px 14px" , color: "#94a3b8" }}>{s.count}</td>
-                                <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" ,
-                                    color: "#94a3b8" }}>₹{s.fund.toFixed(1)}</td>
-                                <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" , color: s.pnl>=
+                                <td style={{ padding: "9px 14px" , fontWeight: 700, color: "var(--text)" }}>{s.strategy}</td>
+                                <td style={{ padding: "9px 14px" , color: "var(--muted)" }}>{s.count}</td>
+                                <td style={{ padding: "9px 14px" , fontFamily: "'DM Mono', monospace" ,
+                                    color: "var(--axis)" }}>₹{s.fund.toFixed(1)}</td>
+                                <td style={{ padding: "9px 14px" , fontFamily: "'DM Mono', monospace" , color: s.pnl>=
                                     0 ? POS : NEG, fontWeight: 700 }}>{fmtSign(s.pnl)}</td>
-                                <td style={{ padding: "10px 14px" , fontFamily: "'DM Mono', monospace" , color: s.roi>=
-                                    0 ? POS : NEG }}>{s.fund > 0 ? `${s.roi.toFixed(2)}%` : "—"}</td>
-                                <td style={{ padding: "10px 14px" }}>
+                                <td style={{ padding: "9px 14px" , fontFamily: "'DM Mono', monospace" , color: s.roi>=
+                                    0 ? POS : NEG, fontWeight: 700 }}>{s.fund > 0 ? `${s.roi.toFixed(2)}%` : "—"}</td>
+                                <td style={{ padding: "9px 14px" }}>
                                     <span style={{ background: s.pnl>= 0 ? "rgba(34,197,94,0.15)" :
                                         "rgba(244,63,94,0.15)", color: s.pnl >= 0 ? POS : NEG, padding: "3px 10px",
                                         borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
@@ -948,169 +1299,9 @@ const totals = useMemo(() => {
             </div>
             )}
 
-            {/* ── YEARLY PROJECTION ── */}
-            {view === "yearly" && (() => {
-            const annRanked = [...DATA].filter(r => r.q1 !== 0).sort((a, b) => b.ann_roi - a.ann_roi);
-            const totalFund = DATA.reduce((s, r) => s + r.fund, 0);
-            const q1PnL = DATA.reduce((s, r) => s + r.q1, 0);
-            const q1ROI = totalFund > 0 ? q1PnL / (totalFund * 1e7) : 0;
-            const annROI = q1ROI * ANN_FACTOR;
-            const annPnL = q1PnL * ANN_FACTOR;
-
-            const monthlyAnn = [
-            { month: "April", roi: totalFund > 0 ? +(DATA.reduce((s,r)=>s+r.apr,0) / (totalFund*1e7) * 12 * 100).toFixed(2) : 0 },
-            { month: "May", roi: totalFund > 0 ? +(DATA.reduce((s,r)=>s+r.may,0) / (totalFund*1e7) * 12 * 100).toFixed(2) : 0 },
-            { month: "June", roi: totalFund > 0 ? +(DATA.reduce((s,r)=>s+r.jun,0) / (totalFund*1e7) * 12 * 100).toFixed(2) : 0 },
-            { month: "Q1 Ann", roi: +(annROI * 100).toFixed(2) },
-            ];
-
-            return (
-            <div>
-                <div style={{ background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.3)",
-                    borderRadius:10, padding:"12px 18px", marginBottom:24, display:"flex", alignItems:"center", gap:10
-                    }}>
-                    <span style={{fontSize:18}}>📅</span>
-                    <span style={{color:"#fbbf24", fontSize:13}}>
-                        Annual ROI is <strong>projected</strong> by extrapolating Q1 (3-month) performance × 4.
-                        Only 3 of 12 months are complete — use these figures as a run-rate, not a guarantee.
-                    </span>
-                </div>
-
-                {/* Portfolio-level annual KPIs */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12,
-                    marginBottom:24 }}>
-                    <StatCard label="Total AUM" value={fmtFund(totalFund)} sub="Total Utilized Fund" color={ACCENT} />
-                    <StatCard label="Q1 ROI (3M)" value={fmtROI(q1ROI)} sub="Apr + May + Jun" color={q1ROI>=0?POS:NEG}
-                        />
-                        <StatCard label="Projected Annual ROI" value={fmtROI(annROI)} sub="Q1 × 4" color={annROI>
-                            =0?"#fbbf24":NEG} />
-                            <StatCard label="Projected Annual P&L" value={fmtSign(annPnL)} sub="Run-rate" color={annPnL>
-                                =0?"#fbbf24":NEG} />
-                                <StatCard label="Best Annual ROI" value={fmtROI(annRanked[0]?.ann_roi)}
-                                    sub={annRanked[0]?.name} color={POS} />
-                                <StatCard label="Worst Annual ROI"
-                                    value={fmtROI(annRanked[annRanked.length-1]?.ann_roi)}
-                                    sub={annRanked[annRanked.length-1]?.name} color={NEG} />
-                </div>
-
-                {/* Monthly annualized bar */}
-                <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`, marginBottom:28}}>
-                    <div style={{color:"#6b8cbb", fontSize:12, fontWeight:700, marginBottom:14}}>ANNUALIZED ROI BY
-                        MONTH (%)</div>
-                    <div style={{color:"#4a6490", fontSize:11, marginBottom:10}}>Each month's ROI extrapolated to 12
-                        months</div>
-                    <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={monthlyAnn} barSize={44}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                            <XAxis dataKey="month" tick={{fill:"#6b8cbb",fontSize:12}} axisLine={false}
-                                tickLine={false} />
-                            <YAxis tick={{fill:"#6b8cbb",fontSize:11}} tickFormatter={v=>`${v}%`} axisLine={false}
-                                tickLine={false} />
-                                <Tooltip formatter={(v)=>`${v.toFixed(2)}%`}
-                                    contentStyle={{background:"#111d33",border:`1px solid
-                                    ${BORDER}`,borderRadius:8,fontSize:12}} />
-                                    <ReferenceLine y={0} stroke={BORDER} />
-                                    <Bar dataKey="roi" name="Ann. ROI %" radius={[6,6,0,0]}>
-                                        {monthlyAnn.map((d,i)=><Cell key={i} fill={d.roi>=0?"#fbbf24":NEG}/>)}
-                                    </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* Full annual ranking bar */}
-                <div style={{marginBottom:8}}>
-                    {sectionHead("F&O Only — Projected Annual ROI (Best → Worst)")}
-                </div>
-                <div style={{background:CARD, borderRadius:12, padding:20, border:`1px solid ${BORDER}`,
-                    marginBottom:28}}>
-                    <ResponsiveContainer width="100%" height={Math.max(500, annRanked.length*22)}>
-                        <BarChart data={annRanked.map(r=>({ name:r.name.length>14?r.name.slice(0,14)+"…":r.name,
-                            fullName:r.name, ann_roi:+(r.ann_roi*100).toFixed(2), ann_pnl:r.ann_pnl, fund:r.fund,
-                            q1_roi:r.q1_roi }))} layout="vertical" barSize={14} margin={{left:110}}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{fill:"#6b8cbb",fontSize:11}} tickFormatter={v=>`${v}%`}
-                                axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{fill:"#b0c4de",fontSize:10}}
-                                    axisLine={false} tickLine={false} width={110} />
-                                <Tooltip content={({active,payload})=>{
-                                    if(!active||!payload?.length) return null;
-                                    const d=payload[0]?.payload;
-                                    return(
-                                    <div style={{background:"#111d33",border:`1px solid
-                                        ${BORDER}`,borderRadius:8,padding:"10px 14px",fontSize:12}}>
-                                        <div style={{color:"#fbbf24",fontWeight:700}}>{d?.fullName}</div>
-                                        <div style={{color:"#6b8cbb",fontSize:11}}>Fund: ₹{d?.fund}L</div>
-                                        <div style={{color:d?.ann_roi>=0?"#fbbf24":NEG}}>Projected Annual ROI:
-                                            {d?.ann_roi?.toFixed(2)}%</div>
-                                        <div style={{color:d?.ann_roi>=0?"#fbbf24":NEG}}>Projected Annual P&L:
-                                            {fmt(d?.ann_pnl)}</div>
-                                        <div style={{color:"#4a6490",fontSize:10}}>Q1 actual ROI:
-                                            {(d?.q1_roi*100)?.toFixed(2)}%</div>
-                                    </div>
-                                    );
-                                    }} />
-                                    <ReferenceLine x={0} stroke={BORDER} />
-                                    <Bar dataKey="ann_roi" name="Annual ROI %" radius={[0,4,4,0]}>
-                                        {annRanked.map((d,i)=><Cell key={i} fill={d.ann_roi>=0?"#fbbf24":NEG}/>)}
-                                    </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* Full detail table */}
-                {sectionHead("Annual ROI Projection — Full Table")}
-                <div style={{background:CARD, borderRadius:12, border:`1px solid ${BORDER}`, overflow:"auto"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                        <thead>
-                            <tr style={{background:"#0a1020",borderBottom:`1px solid ${BORDER}`}}>
-                                {["#","Code","Name","Strategy","Fund (Cr)","Q1 P&L","Q1 ROI","Proj. Annual ROI","Proj.
-                                Annual P&L","Status"].map(h=>(
-                                <th key={h} style={{padding:"12px
-                                    10px",textAlign:"left",color:"#6b8cbb",fontWeight:700,letterSpacing:1,whiteSpace:"nowrap"}}>
-                                    {h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {annRanked.map((r,i)=>(
-                            <tr key={r.code} style={{background:i%2===0?CARD:"#0d1423",borderBottom:`1px solid
-                                ${BORDER}22`}}>
-                                <td style={{padding:"10px",color:"#4a6490"}}>{i+1}</td>
-                                <td style={{padding:"10px",color:ACCENT,fontFamily:"'DM Mono',monospace",fontSize:11}}>
-                                    {r.code}</td>
-                                <td style={{padding:"10px",fontWeight:600,whiteSpace:"nowrap"}}>{r.name}</td>
-                                <td style={{padding:"10px",color:"#6b8cbb",fontSize:11}}>{r.strategy||"—"}</td>
-                                <td style={{padding:"10px",fontFamily:"'DM Mono',monospace",color:"#94a3b8"}}>{r.fund}
-                                </td>
-                                <td style={{padding:"10px",fontFamily:"'DM Mono',monospace",color:r.q1>
-                                    =0?POS:NEG,whiteSpace:"nowrap"}}>{fmtSign(r.q1)}</td>
-                                <td style={{padding:"10px",fontFamily:"'DM Mono',monospace",color:r.q1_roi>
-                                    =0?POS:NEG}}>{fmtROI(r.q1_roi)}</td>
-                                <td style={{padding:"10px",fontFamily:"'DM Mono',monospace",color:r.ann_roi>
-                                    =0?"#fbbf24":NEG,fontWeight:700,fontSize:13}}>{fmtROI(r.ann_roi)}</td>
-                                <td style={{padding:"10px",fontFamily:"'DM Mono',monospace",color:r.ann_pnl>
-                                    =0?"#fbbf24":NEG,whiteSpace:"nowrap"}}>{fmtSign(r.ann_pnl)}</td>
-                                <td style={{padding:"10px"}}>
-                                    <span
-                                        style={{background:r.ann_roi>=0?"rgba(251,191,36,0.15)":"rgba(244,63,94,0.15)",color:r.ann_roi>=0?"#fbbf24":NEG,padding:"3px
-                                        10px",borderRadius:20,fontSize:11,fontWeight:700}}>
-                                        {r.ann_roi>=0?"ON TRACK":"LOSS"}
-                                    </span>
-                                </td>
-                            </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                <div style={{color:"#4a6490",fontSize:11,marginTop:12,textAlign:"right"}}>
-                    * Annualized projection based on Q1 (Apr–Jun 2026) performance × 4. Actual results may vary.
-                </div>
-            </div>
-            );
-            })()}
 
             {/* ── CASH / ETF / ATS ── */}
-            {view === "cash" && (() => {
+            {showSection("cash") && (() => {
             const cashSection = DATA_ALL.filter(r => r.group === 2 && r.code !== "P3361");
             const cashTotalFund = cashSection.reduce((s, r) => s + r.fund, 0);
             const cashApr = cashSection.reduce((s, r) => s + r.apr, 0);
@@ -1124,7 +1315,10 @@ const totals = useMemo(() => {
             { month: "June", pnl: cashJun, roi: cashTotalFund > 0 ? cashJun / (cashTotalFund * 1e7) : 0 },
             ];
             return (
-            <div>
+            <div className="print-section">
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                    <ExportBtn onClick={exportCashSheet} label="Export Cash / ETF Sheet" />
+                </div>
                 {/* Notice banner */}
                 <div style={{ background: "rgba(234,179,8,0.08)" , border: "1px solid rgba(234,179,8,0.3)" ,
                     borderRadius: 10, padding: "12px 18px" , marginBottom: 24, display: "flex" , alignItems: "center" ,
@@ -1153,14 +1347,14 @@ const totals = useMemo(() => {
                 {sectionHead("Cash / ETF Monthly Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={cashTrend} barSize={50}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -1171,14 +1365,14 @@ const totals = useMemo(() => {
                         </ResponsiveContainer>
                     </div>
                     <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: "#6b8cbb" , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
+                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={200}>
                             <LineChart data={cashTrend}>
                                 <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
-                                <XAxis dataKey="month" tick={{ fill: "#6b8cbb" , fontSize: 12 }} axisLine={false}
+                                <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
-                                <YAxis tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
+                                <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
                                     <ReferenceLine y={0} stroke={BORDER} />
@@ -1194,25 +1388,24 @@ const totals = useMemo(() => {
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}`,
                     marginBottom: 28 }}>
                     <ResponsiveContainer width="100%" height={Math.max(200, cashRanked.length * 38)}>
-                        <BarChart data={cashRanked.map(r=> ({ name: r.name.length > 16 ? r.name.slice(0,16)+"…" :
-                            r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
-                            strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 130 }}>
+                        <BarChart data={cashRanked.map(r=> ({ name: r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
+                            strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
-                            <XAxis type="number" tick={{ fill: "#6b8cbb" , fontSize: 11 }} tickFormatter={v=> fmt(v)}
+                            <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                 axisLine={false} tickLine={false} />
-                                <YAxis type="category" dataKey="name" tick={{ fill: "#b0c4de" , fontSize: 11 }}
-                                    axisLine={false} tickLine={false} width={130} />
+                                <YAxis type="category" dataKey="name" tick={{ fill: AXIS_C , fontSize: 12 }}
+                                    interval={0} width={165} axisLine={false} tickLine={false} />
                                 <Tooltip content={({ active, payload })=> {
                                     if (!active || !payload?.length) return null;
                                     const d = payload[0]?.payload;
                                     return (
-                                    <div style={{ background: "#111d33" , border: `1px solid ${BORDER}`, borderRadius:
+                                    <div style={{ background: TIP_BG , border: `1px solid ${TIP_BORDER}`, borderRadius:
                                         8, padding: "10px 14px" , fontSize: 12 }}>
-                                        <div style={{ color: "#fbbf24" , fontWeight: 700 }}>{d?.fullName}</div>
-                                        <div style={{ color: "#6b8cbb" , fontSize: 11 }}>{d?.strategy || "—"} ·
+                                        <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
+                                        <div style={{ color: MUTED_C , fontSize: 11 }}>{d?.strategy || "—"} ·
                                             ₹{d?.fund}Cr</div>
                                         <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
-                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Annual ROI: {d?.roi?.toFixed(2)}%
+                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
                                         </div>
                                     </div>
                                     );
@@ -1228,33 +1421,32 @@ const totals = useMemo(() => {
                 {/* Detail table */}
                 {sectionHead("Cash / ETF Account Detail")}
                 <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
-                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 12 }}>
+                    <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
-                            <tr style={{ background: "#0a1020" , borderBottom: `1px solid ${BORDER}` }}>
-                                {["#","Code","Name","Strategy","Fund (Cr)","Apr P&L","May P&L","Jun P&L","Q1 P&L","Q1
-                                ROI"].map(h => (
-                                <th key={h} style={{ padding:"12px 10px", textAlign:"left", color:"#6b8cbb",
+                            <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
+                                {["#","Code","Name","Strategy","Fund (Cr)","Apr P&L","May P&L","Jun P&L","Q1 P&L","Q1 ROI"].map(h => (
+                                <th key={h} style={{ padding:"11px 10px", textAlign:"left", color:"var(--muted)",
                                     fontWeight:700, letterSpacing:1, whiteSpace:"nowrap" }}>{h}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {cashRanked.map((r, i) => (
-                            <tr key={r.code} style={{ background: i % 2===0 ? CARD : "#0d1423" , borderBottom: `1px
+                            <tr key={r.code} style={{ background: i % 2===0 ? CARD : "var(--row-alt)" , borderBottom: `1px
                                 solid ${BORDER}22` }}>
-                                <td style={{ padding:"10px", color:"#4a6490" }}>{i+1}</td>
-                                <td style={{ padding:"10px", color:"#fbbf24", fontFamily:"'DM Mono',monospace",
+                                <td style={{ padding:"9px 10px", color:"var(--muted2)" }}>{i+1}</td>
+                                <td style={{ padding:"9px 10px", color:"var(--gold)", fontFamily:"'DM Mono',monospace",
                                     fontSize:11 }}>{r.code}</td>
-                                <td style={{ padding:"10px", fontWeight:600 }}>{r.name}</td>
-                                <td style={{ padding:"10px", color:"#6b8cbb", fontSize:11 }}>{r.strategy || "—"}</td>
-                                <td style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color:"#94a3b8" }}>
+                                <td style={{ padding:"9px 10px", fontWeight:700, color:"var(--text)" }}>{r.name}</td>
+                                <td style={{ padding:"9px 10px", color:"var(--muted)", fontSize:11 }}>{r.strategy || "—"}</td>
+                                <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color:"var(--axis)" }}>
                                     {r.fund}</td>
                                 {[r.apr, r.may, r.jun, r.q1].map((v, j) => (
-                                <td key={j} style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color: v>= 0 ?
-                                    POS : NEG, whiteSpace:"nowrap" }}>{v === 0 ? "—" : fmtSign(v)}</td>
+                                <td key={j} style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: v>= 0 ?
+                                    POS : NEG, whiteSpace:"nowrap", fontWeight: v !== 0 ? 700 : 400 }}>{v === 0 ? "—" : fmtSign(v)}</td>
                                 ))}
-                                <td style={{ padding:"10px", fontFamily:"'DM Mono',monospace", color: r.q1_roi>= 0 ? POS
-                                    : NEG }}>{fmtROI(r.q1_roi)}</td>
+                                <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: r.q1_roi>= 0 ? POS
+                                    : NEG, fontWeight: 700 }}>{fmtROI(r.q1_roi)}</td>
                             </tr>
                             ))}
                         </tbody>
@@ -1265,6 +1457,80 @@ const totals = useMemo(() => {
             })()}
 
         </div>
+
+        {/* Report generating overlay */}
+        {reportBusy && (
+          <div className="no-print" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+            background: "rgba(4,7,13,0.92)", backdropFilter: "blur(4px)", display: "flex", flexDirection: "column",
+            justifyContent: "center", alignItems: "center", zIndex: 2000, gap: 16 }}>
+            <div style={{ width: 46, height: 46, border: "4px solid var(--border)", borderTopColor: "var(--violet)",
+              borderRadius: "50%", animation: "qspin 0.8s linear infinite" }} />
+            <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700 }}>Generating PDF report…</div>
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>Rendering charts &amp; tables — this can take a few seconds.</div>
+            <style>{`@keyframes qspin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* Print Modal overlay */}
+        {showPrintModal && (
+          <div className="no-print" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+            background: "rgba(4,7,13,0.85)", backdropFilter: "blur(6px)", display: "flex", justifyContent: "center",
+            alignItems: "center", zIndex: 1000 }}>
+            <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, width: 470,
+              maxWidth: "92%", boxShadow: "0 20px 45px rgba(0,0,0,0.6)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>📄 Generate Dashboard Report</h3>
+                <button onClick={() => setShowPrintModal(false)} style={{ background: "transparent", border: "none",
+                  color: "var(--muted)", fontSize: 24, cursor: "pointer", lineHeight: 1, outline: "none" }}>&times;</button>
+              </div>
+              <p style={{ color: "var(--muted)", fontSize: 12, marginBottom: 18 }}>
+                Pick the sections to include, then download a multi-page PDF report (cover, summary, charts &amp; tables).</p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 20 }}>
+                {[
+                  { id: "summary",   label: "Executive Summary (KPI cards)" },
+                  { id: "monthly",   label: "Monthly Report (trend + selected month)" },
+                  { id: "quarterly", label: "Quarter Summary (Top/Bottom + full Q1)" },
+                  { id: "user",      label: "User Performance table" },
+                  { id: "strategy",  label: "Strategy Analysis" },
+                  { id: "cash",      label: "Cash / ETF / ATS" },
+                ].map(s => (
+                  <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px",
+                    borderRadius: 8, cursor: "pointer", background: printSel[s.id] ? "rgba(167,139,250,0.10)" : "transparent",
+                    fontSize: 13, fontWeight: printSel[s.id] ? 700 : 500, color: "var(--text)" }}>
+                    <input type="checkbox" checked={printSel[s.id]}
+                      onChange={(e) => setPrintSel({ ...printSel, [s.id]: e.target.checked })}
+                      style={{ accentColor: "var(--violet)", width: 15, height: 15, cursor: "pointer" }} />
+                    {s.label}
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={() => setPrintSel({ summary: true, monthly: true, quarterly: true, user: true, strategy: true, cash: true })}
+                    style={{ background: "transparent", border: "none", color: "var(--violet)", fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none" }}>Select all</button>
+                  <span style={{ color: BORDER }}>|</span>
+                  <button onClick={() => setPrintSel({ summary: false, monthly: false, quarterly: false, user: false, strategy: false, cash: false })}
+                    style={{ background: "transparent", border: "none", color: "var(--muted)", fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none" }}>Clear</button>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={startPrint} disabled={!Object.values(printSel).some(Boolean)}
+                    title="Use the browser print dialog instead"
+                    style={{ background: "transparent", border: `1px solid ${BORDER}`,
+                    color: "var(--muted)", borderRadius: 8, padding: "10px 16px", fontSize: 12, fontWeight: 700,
+                    cursor: Object.values(printSel).some(Boolean) ? "pointer" : "not-allowed", outline: "none" }}>🖨️ Browser Print</button>
+                  <button onClick={startReport} disabled={!Object.values(printSel).some(Boolean)}
+                    style={{ background: "var(--violet)", border: "none", color: "#000", borderRadius: 8, padding: "10px 22px",
+                      fontSize: 13, fontWeight: 800, cursor: Object.values(printSel).some(Boolean) ? "pointer" : "not-allowed",
+                      outline: "none", opacity: Object.values(printSel).some(Boolean) ? 1 : 0.5 }}>
+                    📄 Generate PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export Modal overlay */}
         {showExportModal && (
@@ -1302,8 +1568,8 @@ const totals = useMemo(() => {
               {/* Modal Title */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <div>
-                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>📥 Export Performance to Excel</h3>
-                  <p style={{ color: "#6b8cbb", fontSize: 11, marginTop: 4 }}>Select the account scope and specific columns to include in the spreadsheet.</p>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>📥 Export Performance to Excel</h3>
+                  <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 4 }}>Select the account scope and specific columns to include in the spreadsheet.</p>
                 </div>
                 <button 
                   onClick={() => setShowExportModal(false)}
@@ -1339,9 +1605,9 @@ const totals = useMemo(() => {
                       key={opt.id}
                       onClick={() => setExportScope(opt.id)}
                       style={{
-                        background: exportScope === opt.id ? "rgba(0, 229, 255, 0.12)" : "#070b14",
+                        background: exportScope === opt.id ? "rgba(0, 229, 255, 0.12)" : "var(--bg)",
                         border: `1px solid ${exportScope === opt.id ? ACCENT : BORDER}`,
-                        color: exportScope === opt.id ? ACCENT : "#6b8cbb",
+                        color: exportScope === opt.id ? ACCENT : "var(--muted)",
                         borderRadius: 8,
                         padding: "10px 8px",
                         cursor: "pointer",
@@ -1395,7 +1661,7 @@ const totals = useMemo(() => {
                 </div>
 
                 <div style={{
-                  background: "#070b14",
+                  background: "var(--bg)",
                   border: `1px solid ${BORDER}`,
                   borderRadius: 8,
                   padding: 16,
@@ -1414,7 +1680,7 @@ const totals = useMemo(() => {
                         gap: 8,
                         fontSize: 12,
                         cursor: col.key === "code" ? "not-allowed" : "pointer",
-                        color: col.key === "code" ? "#4a6490" : "#e2eaf7",
+                        color: col.key === "code" ? "var(--muted2)" : "var(--text)",
                         fontWeight: selectedCols[col.key] ? 600 : 400,
                         opacity: col.key === "code" ? 0.7 : 1,
                       }}
@@ -1453,7 +1719,7 @@ const totals = useMemo(() => {
                   style={{
                     background: "transparent",
                     border: `1px solid ${BORDER}`,
-                    color: "#6b8cbb",
+                    color: "var(--muted)",
                     borderRadius: 8,
                     padding: "10px 20px",
                     fontSize: 13,
@@ -1463,12 +1729,12 @@ const totals = useMemo(() => {
                     outline: "none"
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#6b8cbb";
-                    e.currentTarget.style.color = "#fff";
+                    e.currentTarget.style.borderColor = "var(--muted)";
+                    e.currentTarget.style.color = "var(--text)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.borderColor = BORDER;
-                    e.currentTarget.style.color = "#6b8cbb";
+                    e.currentTarget.style.color = "var(--muted)";
                   }}
                 >
                   Cancel
@@ -1504,9 +1770,11 @@ const totals = useMemo(() => {
           </div>
         )}
 
-        <div style={{ textAlign: "center" , color: "#1e2d4a" , fontSize: 11, marginTop: 20 }}>
-            Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q2–Q4 pending
+        <div style={{ textAlign: "center" , color: "var(--border)" , fontSize: 11, marginTop: 20 }}>
+            Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q1 + Q2 (Apr–Sep) · Q3–Q4 pending
         </div>
     </div>
     );
     }
+
+export default Dashboard
