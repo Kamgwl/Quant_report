@@ -23,6 +23,10 @@
   <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <!-- FileSaver for triggering download in browser -->
   <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <!-- jsPDF + AutoTable + html2canvas for the generated PDF report -->
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
   <style>
     :root, [data-theme='dark'] {
@@ -118,7 +122,7 @@
 
   <script type="text/babel" data-presets="react">
 // Destructure hooks from React global
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 
 // Destructure Recharts components from Recharts global
 const {
@@ -395,27 +399,47 @@ const [sortBy, setSortBy] = useState("roi");
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
 
-// ── Print state ──
+// ── Report / Print state ──
 const [showPrintModal, setShowPrintModal] = useState(false);
-const [printMode, setPrintMode] = useState(false);
+const [printMode, setPrintMode] = useState(false);   // browser print path
+const [reportMode, setReportMode] = useState(false); // off-screen render for PDF capture
+const [reportBusy, setReportBusy] = useState(false);
+const themeBeforeReport = useRef(null);
 const [printSel, setPrintSel] = useState({
-  summary: true, monthly: false, quarterly: true, user: true, strategy: true, cash: false,
+  summary: true, monthly: true, quarterly: true, user: true, strategy: true, cash: false,
 });
-// When print mode turns on, wait a tick for the selected sections + charts to
-// render, fire the browser print dialog, then drop back to normal view.
+// Browser-print path: render selected sections, fire print dialog, reset.
 useEffect(() => {
   if (!printMode) return;
-  const t = setTimeout(() => {
-    window.print();
-    setPrintMode(false);
-  }, 350);
+  const t = setTimeout(() => { window.print(); setPrintMode(false); }, 350);
   const after = () => setPrintMode(false);
   window.addEventListener("afterprint", after);
   return () => { clearTimeout(t); window.removeEventListener("afterprint", after); };
 }, [printMode]);
+// PDF-report path: once sections are rendered, capture charts + build the PDF.
+useEffect(() => {
+  if (!reportMode) return;
+  let cancelled = false;
+  const t = setTimeout(async () => {
+    try { await buildPdfReport(); }
+    catch (e) { console.error("Report failed", e); alert("Report generation failed: " + e.message); }
+    finally {
+      if (!cancelled) {
+        setReportMode(false); setReportBusy(false);
+        if (themeBeforeReport.current) setTheme(themeBeforeReport.current); // restore theme
+      }
+    }
+  }, 650); // give Recharts + the light-theme switch time to lay out
+  return () => { cancelled = true; clearTimeout(t); };
+}, [reportMode]);
 const startPrint = () => { setShowPrintModal(false); setPrintMode(true); };
-// A section renders normally when its tab is active, OR (in print mode) when ticked.
-const showSection = (id) => printMode ? printSel[id] : view === id;
+const startReport = () => {
+  themeBeforeReport.current = theme;
+  setTheme("light");           // captured charts read cleanly on a light page
+  setShowPrintModal(false); setReportBusy(true); setReportMode(true);
+};
+// A section renders when its tab is active, OR during print/report capture when ticked.
+const showSection = (id) => (printMode || reportMode) ? printSel[id] : view === id;
 const [selectedCols, setSelectedCols] = useState({
   code: true,
   name: true,
@@ -551,6 +575,217 @@ const exportMonthlySheet = () => {
     { key: roiKey, label: `${lbl} ROI`, align: "right", numFmt: ROI_FMT, colorCode: true },
   ];
   exportRowsToExcel(rows, cols, `Monthly ${lbl}`, `Quant_Monthly_${lbl}_FY2026-27.xlsx`);
+};
+
+// ── PDF REPORT BUILDER ──────────────────────────────────────────────────────
+const buildPdfReport = async () => {
+  const JsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!JsPDF) { alert("PDF library not loaded — check your internet connection."); return; }
+
+  const doc = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 40, CONTENT_W = W - M * 2;
+  const DARK = [13, 21, 38], CYAN = [0, 229, 255], GREEN = [22, 163, 74], RED = [225, 29, 72];
+  let cursorY = 120;
+
+  // ASCII-only formatters — jsPDF's standard fonts are Latin-1, so the ₹ glyph
+  // (and any non-Latin char) corrupts the cell. Use "Rs" instead.
+  const pdfNum = (v) => {
+    const a = Math.abs(v);
+    if (a >= 1e7) return (v / 1e7).toFixed(2) + " Cr";
+    if (a >= 1e5) return (v / 1e5).toFixed(2) + " L";
+    if (a >= 1e3) return (v / 1e3).toFixed(1) + " K";
+    return String(Math.round(v));
+  };
+  const pnlStr = (v) => (v >= 0 ? "+Rs " : "-Rs ") + pdfNum(Math.abs(v));
+  const roiStr = (v) => (v * 100).toFixed(2) + "%";
+  const fundStr = (cr) => "Rs " + (cr >= 1 ? cr.toFixed(2) + " Cr" : (cr * 100).toFixed(0) + " L");
+  const ensureSpace = (needed) => { if (cursorY + needed > H - M) { doc.addPage(); cursorY = M; } };
+  let firstSection = true;
+  const sectionTitle = (title) => {
+    if (!firstSection) { doc.addPage(); cursorY = M; }  // each section starts on a new page
+    firstSection = false;
+    ensureSpace(46);
+    doc.setDrawColor(0, 150, 179); doc.setLineWidth(3);
+    doc.line(M, cursorY, M + 24, cursorY);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(20, 30, 50);
+    doc.text(title.toUpperCase(), M + 32, cursorY + 4);
+    cursorY += 20;
+  };
+  const addTable = (head, body, colStyles) => {
+    doc.autoTable({
+      startY: cursorY, margin: { left: M, right: M }, theme: "striped",
+      head: [head], body,
+      styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" },
+      headStyles: { fillColor: DARK, textColor: CYAN, fontSize: 8 },
+      alternateRowStyles: { fillColor: [244, 246, 251] },
+      columnStyles: colStyles || {},
+      didParseCell: (data) => {
+        if (data.section === "body" && typeof data.cell.raw === "string") {
+          const t = data.cell.raw;
+          if (/^[+-]/.test(t)) data.cell.styles.textColor = t[0] === "-" ? RED : GREEN;
+        }
+      },
+    });
+    cursorY = doc.lastAutoTable.finalY + 22;
+  };
+  const addChart = async (id) => {
+    const el = document.getElementById(id);
+    if (!el || !window.html2canvas) return;
+    const canvas = await window.html2canvas(el, { backgroundColor: "#ffffff", scale: 2, logging: false });
+    const imgW = CONTENT_W, imgH = canvas.height * imgW / canvas.width;
+    ensureSpace(imgH + 8);
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", M, cursorY, imgW, imgH);
+    cursorY += imgH + 14;
+  };
+  // Rounded KPI card with an accent bar, label, big value and sub-line.
+  const kpiCard = (x, y, w, h, label, value, sub, accent, valColor) => {
+    doc.setFillColor(247, 249, 252); doc.setDrawColor(226, 232, 242); doc.setLineWidth(0.6);
+    doc.roundedRect(x, y, w, h, 6, 6, "FD");
+    doc.setFillColor(accent[0], accent[1], accent[2]); doc.roundedRect(x, y + 6, 4, h - 12, 2, 2, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(120, 133, 152);
+    doc.text(label.toUpperCase(), x + 16, y + 17);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(valColor[0], valColor[1], valColor[2]);
+    doc.text(value, x + 16, y + 37);
+    if (sub) { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(130, 142, 160); doc.text(sub, x + 16, y + 51); }
+  };
+  // Leaderboard row: rank badge + name/strategy on the left, ROI + P&L on the right.
+  const leaderRow = (x, y, w, rank, name, strat, roi, pnl, positive, badge) => {
+    const h = 30, col = positive ? GREEN : RED;
+    doc.setFillColor(247, 249, 252); doc.setDrawColor(226, 232, 242); doc.setLineWidth(0.5);
+    doc.roundedRect(x, y, w, h, 5, 5, "FD");
+    doc.setFillColor(badge[0], badge[1], badge[2]); doc.circle(x + 16, y + h / 2, 9, "F");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+    doc.text(String(rank), x + 16, y + h / 2 + 3, { align: "center" });
+    doc.setFontSize(9.5); doc.setTextColor(20, 30, 50);
+    doc.text(doc.splitTextToSize(name, w - 130)[0], x + 30, y + 13);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120, 133, 152);
+    doc.text((strat || "-").slice(0, 22), x + 30, y + 23);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(col[0], col[1], col[2]);
+    doc.text(roi, x + w - 12, y + 13, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(90, 105, 125);
+    doc.text(pnl, x + w - 12, y + 24, { align: "right" });
+  };
+
+  try {
+    // Cover band
+    doc.setFillColor(DARK[0], DARK[1], DARK[2]); doc.rect(0, 0, W, 96, "F");
+    doc.setTextColor(0, 229, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+    doc.text("Quant Strategy Dashboard", M, 42);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(210, 220, 235);
+    doc.text("FY 2026-27   |   Q1 + Q2 Performance Report   |   April - September 2026", M, 64);
+    doc.setFontSize(9); doc.setTextColor(150, 165, 185);
+    doc.text("Generated " + new Date().toLocaleString("en-IN"), M, 82);
+
+    if (printSel.summary) {
+      sectionTitle("Executive Summary");
+      const NAVY = [20, 30, 50], VIOLET = [124, 92, 255];
+      const gr = (v) => (v >= 0 ? GREEN : RED);
+
+      // ── Hero banner: headline FY Net P&L ──
+      const heroH = 62, hero = gr(totals.fyPnL);
+      doc.setFillColor(totals.fyPnL >= 0 ? 236 : 253, totals.fyPnL >= 0 ? 248 : 236, totals.fyPnL >= 0 ? 240 : 236);
+      doc.roundedRect(M, cursorY, CONTENT_W, heroH, 8, 8, "F");
+      doc.setFillColor(hero[0], hero[1], hero[2]); doc.roundedRect(M, cursorY, 6, heroH, 3, 3, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(90, 105, 125);
+      doc.text("FY NET P&L  (YTD, Q1 + Q2)", M + 22, cursorY + 22);
+      doc.setFontSize(24); doc.setTextColor(hero[0], hero[1], hero[2]);
+      doc.text(pnlStr(totals.fyPnL), M + 22, cursorY + 48);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(70, 84, 104);
+      doc.text("ROI " + roiStr(totals.fyROI), W - M - 22, cursorY + 26, { align: "right" });
+      doc.setFontSize(9); doc.setTextColor(110, 124, 144);
+      doc.text(totals.count + " accounts  |  " + totals.winners + " winners / " + totals.losers + " losers",
+        W - M - 22, cursorY + 44, { align: "right" });
+      cursorY += heroH + 16;
+
+      // ── KPI cards (2 x 2) ──
+      const gapX = 16, gapY = 14, cardH = 62, cardW = (CONTENT_W - gapX) / 2;
+      const cards = [
+        ["Total AUM (Utilized)", fundStr(totals.totalFund), totals.count + " accounts", CYAN, NAVY],
+        ["FY ROI (YTD)", roiStr(totals.fyROI), "Q1 + Q2 combined", CYAN, gr(totals.fyROI)],
+        ["Q1 Net P&L (Apr-Jun)", pnlStr(totals.q1PnL), "ROI " + roiStr(totals.q1ROI), gr(totals.q1PnL), gr(totals.q1PnL)],
+        ["Q2 Net P&L (Jul-Sep)", pnlStr(totals.q2PnL), "ROI " + roiStr(totals.q2ROI), gr(totals.q2PnL), gr(totals.q2PnL)],
+      ];
+      cards.forEach((c, i) => kpiCard(
+        M + (i % 2) * (cardW + gapX), cursorY + Math.floor(i / 2) * (cardH + gapY),
+        cardW, cardH, c[0], c[1], c[2], c[3], c[4]));
+      cursorY += 2 * (cardH + gapY) + 8;
+    }
+
+    if (printSel.monthly) {
+      sectionTitle("Monthly Performance");
+      await addChart("rpt-monthly-pnl");
+      await addChart("rpt-monthly-roi");
+      const fund = totals.totalFund, mroi = (p) => fund > 0 ? p / (fund * 1e7) : 0;
+      const grM = (v) => (v >= 0 ? GREEN : RED);
+      const cH = 56, rowGap = 12;
+      ensureSpace(50 + rowGap + 2 * (cH + rowGap) + 6);
+      // Yearly P&L on top (full-width)
+      kpiCard(M, cursorY, CONTENT_W, 50, "FY (YTD) Net P&L  -  Q1 + Q2",
+        pnlStr(totals.fyPnL), "ROI " + roiStr(mroi(totals.fyPnL)), CYAN, grM(totals.fyPnL));
+      cursorY += 50 + rowGap;
+      // Q1 row, then Q2 row (July starts a new row)
+      const gx = 10, cW = (CONTENT_W - 3 * gx) / 4;
+      const drawRow = (arr, ry) => arr.forEach((m, i) => kpiCard(
+        M + i * (cW + gx), ry, cW, cH, m[0], pnlStr(m[1]), "ROI " + roiStr(mroi(m[1])),
+        m[2] ? CYAN : grM(m[1]), grM(m[1])));
+      drawRow([["April", totals.aprPnL], ["May", totals.mayPnL], ["June", totals.junPnL], ["Q1 Total", totals.q1PnL, true]], cursorY);
+      drawRow([["July", totals.julPnL], ["August", totals.augPnL], ["September", totals.sepPnL], ["Q2 Total", totals.q2PnL, true]], cursorY + cH + rowGap);
+      cursorY += 2 * (cH + rowGap) + 4;
+    }
+
+    if (printSel.quarterly) {
+      sectionTitle("Quarter Summary - Top / Bottom (Q1 ROI)");
+      const colGap = 20, colW = (CONTENT_W - colGap) / 2;
+      const leftX = M, rightX = M + colW + colGap;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+      doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.text("TOP 5 PERFORMERS", leftX, cursorY);
+      doc.setTextColor(RED[0], RED[1], RED[2]); doc.text("BOTTOM 5 PERFORMERS", rightX, cursorY);
+      cursorY += 8;
+      const rowH = 30, rowGap = 8, gold = [212, 160, 23], slate = [100, 116, 139];
+      top5.forEach((r, i) => leaderRow(leftX, cursorY + i * (rowH + rowGap), colW, i + 1,
+        r.name, r.strategy || "-", roiStr(r.q1_roi), pnlStr(r.q1), true, i === 0 ? gold : slate));
+      bot5.forEach((r, i) => leaderRow(rightX, cursorY + i * (rowH + rowGap), colW, i + 1,
+        r.name, r.strategy || "-", roiStr(r.q1_roi), pnlStr(r.q1), false, RED));
+      cursorY += 5 * (rowH + rowGap) + 6;
+    }
+
+    if (printSel.user) {
+      sectionTitle("User Performance (Q1 / Q2 / FY)");
+      addTable(["#", "Code", "Name", "Strategy", "Fund", "Q1 P&L", "Q1 ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"],
+        ranked.map((r, i) => [String(i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+          pnlStr(r.q1), roiStr(r.q1_roi), pnlStr(r.q2), roiStr(r.q2_roi), pnlStr(r.year), roiStr(r.year_roi)]),
+        { 2: { cellWidth: 78 } });
+    }
+
+    if (printSel.strategy) {
+      sectionTitle("Strategy Analysis");
+      await addChart("rpt-strategy-pnl");
+      doc.addPage(); cursorY = M;   // keep the full strategy table together on its own page
+      addTable(["Strategy", "Accounts", "Fund (Cr)", "Q1 Net P&L", "Q1 ROI %"],
+        strategyData.map(s => [s.strategy, String(s.count), s.fund.toFixed(2), pnlStr(s.pnl), s.roi.toFixed(2) + "%"]),
+        { 0: { cellWidth: 130, fontStyle: "bold", textColor: [20, 30, 50] } });
+    }
+
+    if (printSel.cash) {
+      sectionTitle("Cash / ETF / ATS");
+      addTable(["#", "Code", "Name", "Strategy", "Fund", "Apr", "May", "Jun", "Q1 P&L", "Q1 ROI"],
+        cashRanked.map((r, i) => [String(i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+          pnlStr(r.apr), pnlStr(r.may), pnlStr(r.jun), pnlStr(r.q1), roiStr(r.q1_roi)]),
+        { 2: { cellWidth: 90 } });
+    }
+
+    // Footer page numbers
+    const pages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      doc.setPage(p);
+      doc.setFontSize(8); doc.setTextColor(150, 160, 175);
+      doc.text("Quant Strategy FY2026-27  -  Confidential", M, H - 18);
+      doc.text("Page " + p + " / " + pages, W - M - 55, H - 18);
+    }
+    doc.save("Quant_Dashboard_Report_FY2026-27.pdf");
+  } finally { /* theme is restored by the report effect */ }
 };
 
 // ── Summary stats ──
@@ -697,7 +932,7 @@ const totals = useMemo(() => {
                 <div className="no-print" style={{ display: "flex" , gap: 10, alignItems: "center" }}>
                     <button
                         onClick={() => setShowPrintModal(true)}
-                        title="Print / save selected sections as PDF"
+                        title="Generate a PDF report of selected sections"
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
                             background: "rgba(167, 139, 250, 0.12)",
@@ -708,7 +943,7 @@ const totals = useMemo(() => {
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--violet)"; e.currentTarget.style.color = "#000"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(167, 139, 250, 0.12)"; e.currentTarget.style.color = "var(--violet)"; }}
                     >
-                        <span style={{ fontSize: 14 }}>🖨️</span> Print
+                        <span style={{ fontSize: 14 }}>📄</span> Report
                     </button>
                     <button
                         onClick={() => setShowExportModal(true)}
@@ -806,7 +1041,7 @@ const totals = useMemo(() => {
                 </div>
                 {sectionHead("Monthly P&L Trend")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 32 }}>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                    <div id="rpt-monthly-pnl" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                         <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={220}>
@@ -824,7 +1059,7 @@ const totals = useMemo(() => {
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                    <div id="rpt-monthly-roi" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                         <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
                             (%)</div>
                         <ResponsiveContainer width="100%" height={220}>
@@ -1106,7 +1341,7 @@ const totals = useMemo(() => {
                 </div>
                 {sectionHead("Strategy-Wise Q1 Performance")}
                 <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
-                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                    <div id="rpt-strategy-pnl" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
                         <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>STRATEGY NET
                             P&L — Q1</div>
                         <ResponsiveContainer width="100%" height={320}>
@@ -1346,6 +1581,19 @@ const totals = useMemo(() => {
 
         </div>
 
+        {/* Report generating overlay */}
+        {reportBusy && (
+          <div className="no-print" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+            background: "rgba(4,7,13,0.92)", backdropFilter: "blur(4px)", display: "flex", flexDirection: "column",
+            justifyContent: "center", alignItems: "center", zIndex: 2000, gap: 16 }}>
+            <div style={{ width: 46, height: 46, border: "4px solid var(--border)", borderTopColor: "var(--violet)",
+              borderRadius: "50%", animation: "qspin 0.8s linear infinite" }} />
+            <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700 }}>Generating PDF report…</div>
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>Rendering charts &amp; tables — this can take a few seconds.</div>
+            <style>{`@keyframes qspin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
         {/* Print Modal overlay */}
         {showPrintModal && (
           <div className="no-print" style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
@@ -1354,12 +1602,12 @@ const totals = useMemo(() => {
             <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, width: 470,
               maxWidth: "92%", boxShadow: "0 20px 45px rgba(0,0,0,0.6)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>🖨️ Print / Save as PDF</h3>
+                <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>📄 Generate Dashboard Report</h3>
                 <button onClick={() => setShowPrintModal(false)} style={{ background: "transparent", border: "none",
                   color: "var(--muted)", fontSize: 24, cursor: "pointer", lineHeight: 1, outline: "none" }}>&times;</button>
               </div>
               <p style={{ color: "var(--muted)", fontSize: 12, marginBottom: 18 }}>
-                Choose the sections to include, then use your browser dialog to print or “Save as PDF”.</p>
+                Pick the sections to include, then download a multi-page PDF report (cover, summary, charts &amp; tables).</p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 20 }}>
                 {[
@@ -1390,13 +1638,16 @@ const totals = useMemo(() => {
                     style={{ background: "transparent", border: "none", color: "var(--muted)", fontSize: 11, fontWeight: 700, cursor: "pointer", outline: "none" }}>Clear</button>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => setShowPrintModal(false)} style={{ background: "transparent", border: `1px solid ${BORDER}`,
-                    color: "var(--muted)", borderRadius: 8, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", outline: "none" }}>Cancel</button>
                   <button onClick={startPrint} disabled={!Object.values(printSel).some(Boolean)}
+                    title="Use the browser print dialog instead"
+                    style={{ background: "transparent", border: `1px solid ${BORDER}`,
+                    color: "var(--muted)", borderRadius: 8, padding: "10px 16px", fontSize: 12, fontWeight: 700,
+                    cursor: Object.values(printSel).some(Boolean) ? "pointer" : "not-allowed", outline: "none" }}>🖨️ Browser Print</button>
+                  <button onClick={startReport} disabled={!Object.values(printSel).some(Boolean)}
                     style={{ background: "var(--violet)", border: "none", color: "#000", borderRadius: 8, padding: "10px 22px",
                       fontSize: 13, fontWeight: 800, cursor: Object.values(printSel).some(Boolean) ? "pointer" : "not-allowed",
                       outline: "none", opacity: Object.values(printSel).some(Boolean) ? 1 : 0.5 }}>
-                    🖨️ Print Selected
+                    📄 Generate PDF
                   </button>
                 </div>
               </div>
