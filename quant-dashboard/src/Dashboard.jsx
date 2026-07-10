@@ -656,6 +656,25 @@ const totals = useMemo(() => {
         })
         .slice(-5).reverse(), [ranked]);
 
+    // ── Best/Worst performers Q2 (F&O) ──
+    const q2Ranked = useMemo(() => [...DATA]
+    .filter(r => !r.isCash && r.q2 !== 0)
+    .sort((a, b) => b.q2_roi - a.q2_roi), []);
+
+    const q2Top5 = useMemo(() => q2Ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(0, 5), [q2Ranked]);
+
+    const q2Bot5 = useMemo(() => q2Ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(-5).reverse(), [q2Ranked]);
+
     // ── Best/Worst performers Q1 (Cash) ──
     const cashRanked = useMemo(() => [...DATA_CASH]
     .filter(r => r.q1 !== 0)
@@ -1009,6 +1028,71 @@ const totals = useMemo(() => {
                         ))}
                     </div>
                 </div>
+
+                {/* Best vs Worst — Q2 */}
+                {sectionHead("Q2 Best / Worst Performers (Jul + Aug + Sep)")}
+                {q2Ranked.length === 0 ? (
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}`,
+                        color: MUTED_C, fontSize: 13, marginBottom: 28 }}>
+                        No Q2 trades booked yet — this will populate as July / August / September data is entered.
+                    </div>
+                ) : (
+                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
+                    {/* Q2 Top 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            🏆 TOP 5 PERFORMERS — Q2 ROI</div>
+                        {q2Top5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < q2Top5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: POS,
+                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q2_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmtSign(r.q2)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+
+                    {/* Q2 Bot 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            ⚠️ BOTTOM 5 PERFORMERS — Q2 ROI</div>
+                        {q2Bot5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < q2Bot5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
+                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q2_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmt(r.q2)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                </div>
+                )}
 
                 {/* Full Q1 bar */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (F&O Only)")}
@@ -1706,5 +1790,6 @@ const totals = useMemo(() => {
     </div>
     );
     }
+
 
 export default Dashboard
