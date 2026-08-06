@@ -259,6 +259,27 @@ const MONTHS = [
 { key: "jun", label: "June 2026", roi_key: "jun_roi", color: "#38bdf8" },
 ];
 
+// Every FY month we hold data for, in calendar order. `cal` is the JS month
+// index (0=Jan) used to pick the "current month" KPI tile. Extend with Oct–Mar
+// when those sheets arrive.
+const FY_MONTHS = [
+{ key: "apr", label: "April",     short: "Apr", cal: 3, q: "q1" },
+{ key: "may", label: "May",       short: "May", cal: 4, q: "q1" },
+{ key: "jun", label: "June",      short: "Jun", cal: 5, q: "q1" },
+{ key: "jul", label: "July",      short: "Jul", cal: 6, q: "q2" },
+{ key: "aug", label: "August",    short: "Aug", cal: 7, q: "q2" },
+{ key: "sep", label: "September", short: "Sep", cal: 8, q: "q2" },
+];
+
+// Quarter tiles in the KPI row. Clicking one opens the monthly-split popup.
+// "fy" is the roll-up and spans every month above.
+const QUARTERS = [
+{ id: "q1", label: "Q1", span: "Apr–Jun", months: ["apr", "may", "jun"] },
+{ id: "q2", label: "Q2", span: "Jul–Sep", months: ["jul", "aug", "sep"] },
+];
+const QUARTER_BY_ID = { ...Object.fromEntries(QUARTERS.map(q => [q.id, q])),
+fy: { id: "fy", label: "FY (YTD)", span: "Apr–Sep", months: FY_MONTHS.map(m => m.key) } };
+
 const fmt = (n) => {
 if (Math.abs(n) >= 1e7) return `₹${(n/1e7).toFixed(2)}Cr`;
 if (Math.abs(n) >= 1e5) return `₹${(n/1e5).toFixed(2)}L`;
@@ -280,14 +301,31 @@ const BORDER = "var(--border)";
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
 
-const StatCard = ({ label, value, sub, color }) => (
-<div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "18px 22px" , borderTop: `3px
-    solid ${color || ACCENT}`, }}>
+// `onClick` turns the card into a button: it grows a hover lift and a "hint ›"
+// affordance in the corner. Used by the quarter tiles to open the month popup.
+const StatCard = ({ label, value, sub, color, onClick, hint }) => (
+<div onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
+    onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+    onMouseEnter={onClick ? (e) => { e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "0 8px 20px rgba(0,0,0,0.18)"; } : undefined}
+    onMouseLeave={onClick ? (e) => { e.currentTarget.style.transform = "none";
+        e.currentTarget.style.boxShadow = "none"; } : undefined}
+    style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "18px 22px" , borderTop: `3px
+    solid ${color || ACCENT}`, cursor: onClick ? "pointer" : "default", position: "relative",
+    transition: "transform 0.15s ease, box-shadow 0.15s ease", outline: "none" }}>
     <div style={{ color: "var(--muted)" , fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" ,
-        marginBottom: 6 }}>{label}</div>
+        marginBottom: 6, paddingRight: onClick ? 16 : 0 }}>{label}</div>
     <div style={{ color: color || "var(--text)" , fontSize: 24, fontWeight: 800, fontFamily: "'DM Mono', monospace" }}>{value}
     </div>
     {sub && <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 4 }}>{sub}</div>}
+    {onClick && (
+    <div className="no-print" style={{ position: "absolute", top: 14, right: 14, color: "var(--muted2)", fontSize: 15,
+        lineHeight: 1 }} title={hint || "View monthly split"}>›</div>
+    )}
+    {onClick && hint && (
+    <div className="no-print" style={{ color: color || ACCENT, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+        marginTop: 8, opacity: 0.85, textTransform: "uppercase" }}>{hint}</div>
+    )}
 </div>
 );
 
@@ -405,6 +443,15 @@ const [sortBy, setSortBy] = useState("roi");
 
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
+
+// Quarter drill-down popup: 'q1' | 'q2' | 'fy' | null
+const [openQuarter, setOpenQuarter] = useState(null);
+useEffect(() => {
+  if (!openQuarter) return;
+  const onKey = (e) => { if (e.key === "Escape") setOpenQuarter(null); };
+  window.addEventListener("keydown", onKey);
+  return () => window.removeEventListener("keydown", onKey);
+}, [openQuarter]);
 
 // ── Report / Print state ──
 const [showPrintModal, setShowPrintModal] = useState(false);
@@ -817,9 +864,48 @@ const totals = useMemo(() => {
   const winners = normalSection.filter(r => r.q1 > 0).length;
   const losers = normalSection.filter(r => r.q1 < 0).length;
   const count = normalSection.length;
+  // Per-month roll-up keyed by month key — drives the quarter popup and the
+  // current-month tile without hardcoding another `xxxPnL` per month.
+  const byMonth = {};
+  FY_MONTHS.forEach(m => {
+    const pnl = normalSection.reduce((s, r) => s + (r[m.key] || 0), 0);
+    byMonth[m.key] = {
+      pnl,
+      roi: totalFund > 0 ? pnl / (totalFund * 1e7) : 0,
+      winners: normalSection.filter(r => (r[m.key] || 0) > 0).length,
+      losers: normalSection.filter(r => (r[m.key] || 0) < 0).length,
+      hasData: normalSection.some(r => (r[m.key] || 0) !== 0),
+    };
+  });
   return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL,
-    julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count };
-}, []); // ── Month bar data (top 20 by absolute PnL) ──
+    julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count, byMonth };
+}, []);
+
+// ── Current-month KPI tile ──
+// Prefer the latest FY month that actually has numbers; only fall back to the
+// calendar month when nothing has been booked yet, so a freshly-rolled month
+// never blanks the headline tile at ₹0.
+const currentMonth = useMemo(() => {
+  const latest = [...FY_MONTHS].reverse().find(m => totals.byMonth[m.key].hasData);
+  if (latest) return latest;
+  const cal = new Date().getMonth();
+  return FY_MONTHS.find(m => m.cal === cal) || FY_MONTHS[FY_MONTHS.length - 1];
+}, [totals]);
+
+// ── Quarter popup contents ──
+// Month ROI uses total AUM as the denominator, matching the KPI cards.
+const quarterDetail = useMemo(() => {
+  if (!openQuarter) return null;
+  const q = QUARTER_BY_ID[openQuarter];
+  const rows = q.months.map(k => ({ ...FY_MONTHS.find(m => m.key === k), ...totals.byMonth[k] }));
+  const pnl = rows.reduce((s, r) => s + r.pnl, 0);
+  const roi = totals.totalFund > 0 ? pnl / (totals.totalFund * 1e7) : 0;
+  const peak = Math.max(1, ...rows.map(r => Math.abs(r.pnl)));
+  const live = rows.filter(r => r.hasData);
+  const best  = live.length ? live.reduce((a, b) => (b.pnl > a.pnl ? b : a)) : null;
+  const worst = live.length ? live.reduce((a, b) => (b.pnl < a.pnl ? b : a)) : null;
+  return { q, rows, pnl, roi, peak, best, worst, pending: rows.filter(r => !r.hasData) };
+}, [openQuarter, totals]); // ── Month bar data (top 20 by absolute PnL) ──
     const monthKey=selectedMonth; const monthROIKey=selectedMonth + "_roi"; const barData=useMemo(()=> {
     const sorted = [...DATA]
     .filter(r => Math.abs(r[monthKey]) > 0)
@@ -1030,21 +1116,26 @@ const totals = useMemo(() => {
                 <StatCard label="Total AUM" value={fmtFund(totals.totalFund)}
                     sub="Total Utilized Fund" color={ACCENT} />
                 <StatCard label="Q1 Net P&L" value={fmtSign(totals.q1PnL)} sub={`ROI ${fmtROI(totals.q1ROI)} · Apr–Jun`}
-                    color={totals.q1PnL>= 0 ? POS : NEG} />
+                    color={totals.q1PnL>= 0 ? POS : NEG}
+                    onClick={printMode ? undefined : () => setOpenQuarter("q1")} hint="Monthly split" />
                 <StatCard label="Q2 Net P&L" value={fmtSign(totals.q2PnL)} sub={`ROI ${fmtROI(totals.q2ROI)} · Jul–Sep`}
-                    color={totals.q2PnL>= 0 ? POS : NEG} />
+                    color={totals.q2PnL>= 0 ? POS : NEG}
+                    onClick={printMode ? undefined : () => setOpenQuarter("q2")} hint="Monthly split" />
                 <StatCard label="FY Net P&L (YTD)" value={fmtSign(totals.fyPnL)} sub={`ROI ${fmtROI(totals.fyROI)} · Q1 + Q2`}
-                    color={totals.fyPnL>= 0 ? POS : NEG} />
-                            <StatCard label="April P&L" value={fmtSign(totals.aprPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.aprPnL /
-                                (totals.totalFund * 1e7) : 0)} color={totals.aprPnL>= 0 ? POS : NEG} />
-                                <StatCard label="May P&L" value={fmtSign(totals.mayPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.mayPnL /
-                                    (totals.totalFund * 1e7) : 0)} color={totals.mayPnL>= 0 ? POS : NEG} />
-                                    <StatCard label="June P&L" value={fmtSign(totals.junPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.junPnL
-                                        / (totals.totalFund * 1e7) : 0)} color={totals.junPnL>= 0 ? POS : NEG} />
-                                    <StatCard label="July P&L" value={fmtSign(totals.julPnL)} sub={fmtROI(totals.totalFund > 0 ? totals.julPnL
-                                        / (totals.totalFund * 1e7) : 0)} color={totals.julPnL>= 0 ? POS : NEG} />
-                                        <StatCard label="Winners / Losers" value={`${totals.winners} /
-                                            ${totals.losers}`} sub={`${totals.count} total accounts`} color="#a78bfa" />
+                    color={totals.fyPnL>= 0 ? POS : NEG}
+                    onClick={printMode ? undefined : () => setOpenQuarter("fy")} hint="All months" />
+                <StatCard label={`${currentMonth.label} P&L`} value={fmtSign(totals.byMonth[currentMonth.key].pnl)}
+                    sub={`ROI ${fmtROI(totals.byMonth[currentMonth.key].roi)} · Current month`}
+                    color={totals.byMonth[currentMonth.key].pnl >= 0 ? POS : NEG} />
+                <StatCard label="Winners / Losers" value={`${totals.winners} / ${totals.losers}`}
+                    sub={`${totals.count} total accounts`} color="#a78bfa" />
+                {/* Browser print can't open popups — lay every month out flat so the
+                    printed summary stays complete. */}
+                {printMode && FY_MONTHS.map(m => (
+                <StatCard key={m.key} label={`${m.label} P&L`} value={fmtSign(totals.byMonth[m.key].pnl)}
+                    sub={fmtROI(totals.byMonth[m.key].roi)}
+                    color={totals.byMonth[m.key].pnl >= 0 ? POS : NEG} />
+                ))}
             </div>
             )}
         </div>
@@ -1682,6 +1773,96 @@ const totals = useMemo(() => {
             <div style={{ color: "var(--text)", fontSize: 15, fontWeight: 700 }}>Generating PDF report…</div>
             <div style={{ color: "var(--muted)", fontSize: 12 }}>Rendering charts &amp; tables — this can take a few seconds.</div>
             <style>{`@keyframes qspin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {/* Quarter drill-down popup — monthly split behind the Q1 / Q2 / FY cards */}
+        {quarterDetail && (
+          <div className="no-print" onClick={() => setOpenQuarter(null)}
+            style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%",
+            background: "rgba(4,7,13,0.85)", backdropFilter: "blur(6px)", display: "flex", justifyContent: "center",
+            alignItems: "center", zIndex: 1000, padding: 16 }}>
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 28, width: 560,
+              maxWidth: "94%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 45px rgba(0,0,0,0.6)",
+              animation: "modalFadeIn 0.2s ease-out" }}>
+              <style>{`
+                @keyframes modalFadeIn {
+                  from { transform: scale(0.95); opacity: 0; }
+                  to { transform: scale(1); opacity: 1; }
+                }
+              `}</style>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+                <div>
+                  <h3 style={{ fontSize: 18, fontWeight: 800, color: "var(--text)", letterSpacing: -0.5 }}>
+                    {quarterDetail.q.label} · Monthly Split</h3>
+                  <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{quarterDetail.q.span} · FY 2026–27</div>
+                </div>
+                <button onClick={() => setOpenQuarter(null)} style={{ background: "transparent", border: "none",
+                  color: "var(--muted)", fontSize: 24, cursor: "pointer", lineHeight: 1, outline: "none" }}>&times;</button>
+              </div>
+
+              {/* Quarter headline */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap",
+                background: quarterDetail.pnl >= 0 ? "rgba(34,197,94,0.10)" : "rgba(244,63,94,0.10)",
+                border: `1px solid ${quarterDetail.pnl >= 0 ? POS : NEG}`, borderRadius: 10,
+                padding: "14px 18px", marginBottom: 20 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, fontFamily: "'DM Mono', monospace",
+                  color: quarterDetail.pnl >= 0 ? POS : NEG }}>{fmtSign(quarterDetail.pnl)}</div>
+                <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                  ROI {fmtROI(quarterDetail.roi)} · on {fmtFund(totals.totalFund)} AUM</div>
+              </div>
+
+              {/* Month rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {quarterDetail.rows.map(m => {
+                  const c = m.pnl >= 0 ? POS : NEG;
+                  const pct = Math.round((Math.abs(m.pnl) / quarterDetail.peak) * 100);
+                  return (
+                  <div key={m.key} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 14px",
+                    opacity: m.hasData ? 1 : 0.5 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ color: "var(--text)", fontSize: 13, fontWeight: 700 }}>{m.label}</span>
+                        {m.hasData && quarterDetail.best && m.key === quarterDetail.best.key && (
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: POS,
+                            border: `1px solid ${POS}`, borderRadius: 4, padding: "1px 5px" }}>BEST</span>)}
+                        {m.hasData && quarterDetail.worst && m.key === quarterDetail.worst.key
+                          && quarterDetail.best && quarterDetail.worst.key !== quarterDetail.best.key && (
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: NEG,
+                            border: `1px solid ${NEG}`, borderRadius: 4, padding: "1px 5px" }}>WORST</span>)}
+                        {!m.hasData && (
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, color: "var(--muted2)",
+                            border: `1px solid ${BORDER}`, borderRadius: 4, padding: "1px 5px" }}>PENDING</span>)}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ color: m.hasData ? c : "var(--muted2)", fontSize: 16, fontWeight: 800,
+                          fontFamily: "'DM Mono', monospace" }}>{m.hasData ? fmtSign(m.pnl) : "—"}</div>
+                        {m.hasData && (
+                        <div style={{ color: "var(--muted2)", fontSize: 11 }}>ROI {fmtROI(m.roi)}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ height: 6, background: "var(--border)", borderRadius: 3, marginTop: 10,
+                      overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", background: c, borderRadius: 3,
+                        transition: "width 0.3s ease" }} />
+                    </div>
+                    {m.hasData && (
+                    <div style={{ color: "var(--muted2)", fontSize: 11, marginTop: 7 }}>
+                      {m.winners} winners · {m.losers} losers</div>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+
+              {quarterDetail.pending.length > 0 && (
+              <div style={{ color: "var(--muted2)", fontSize: 11, marginTop: 16 }}>
+                {quarterDetail.pending.map(m => m.label).join(", ")} not booked yet — shown at zero.</div>
+              )}
+            </div>
           </div>
         )}
 
