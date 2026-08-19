@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, Cell, ReferenceLine, Legend,
+  LineChart, Line, Cell, ReferenceLine, Legend, AreaChart, Area,
 } from 'recharts'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
@@ -215,6 +215,11 @@ const fmtSign = (n) => n >= 0 ? `+${fmt(n)}` : fmt(n);
 
 // ── COLORS ─────────────────────────────────────────────────────────────────────
 const ACCENT = "var(--accent)";
+// Chart series hue. The app's --accent (#00e5ff) sits above the dark-mode OKLCH
+// lightness band and blooms on the near-black card, so plotted marks use this
+// step instead — it clears the lightness band, the chroma floor and WCAG
+// contrast against BOTH the dark (#0d1526) and light (#ffffff) chart surfaces.
+const SERIES = "#0ea5c9";
 const POS = "var(--pos)";
 const NEG = "var(--neg)";
 const BG = "var(--bg)";
@@ -1026,6 +1031,69 @@ const quarterDropdown = quarterDetail
     { month: "Sep", pnl: totals.sepPnL, roi: roiOf(totals.sepPnL) },
     ];
 
+    // ROI trend. A month with nothing booked carries roi:null rather than 0 —
+    // plotting it at zero would claim a 0.00% return that was never earned.
+    const roiTrend = useMemo(() => FY_MONTHS.map(m => ({
+      month: m.short,
+      label: m.label,
+      hasData: totals.byMonth[m.key].hasData,
+      roi: totals.byMonth[m.key].hasData ? totals.byMonth[m.key].roi : null,
+      pnl: totals.byMonth[m.key].pnl,
+    })), [totals]);
+
+    const roiStats = useMemo(() => {
+      const live = roiTrend.filter(d => d.hasData);
+      if (!live.length) return null;
+      return {
+        best: live.reduce((a, b) => (b.roi > a.roi ? b : a)),
+        worst: live.reduce((a, b) => (b.roi < a.roi ? b : a)),
+        avg: live.reduce((s, d) => s + d.roi, 0) / live.length,
+        months: live.length,
+        pending: roiTrend.filter(d => !d.hasData).map(d => d.label),
+      };
+    }, [roiTrend]);
+
+    // 8px markers with a 2px surface ring, and a direct label on the best and
+    // worst months only — a number on every point reads as noise.
+    const RoiDot = (props) => {
+      const { cx, cy, payload } = props;
+      if (cx == null || cy == null || !payload || !payload.hasData) return null;
+      const isBest  = roiStats && payload.month === roiStats.best.month;
+      const isWorst = roiStats && payload.month === roiStats.worst.month;
+      const mark = isBest || isWorst;
+      return (
+        <g>
+          <circle cx={cx} cy={cy} r={mark ? 5 : 4} fill={SERIES} stroke={CARD} strokeWidth={2} />
+          {mark && (
+          <text x={cx} y={isBest ? cy - 13 : cy + 21} textAnchor="middle" fill={AXIS_C}
+            fontSize={11} fontWeight={700}>{fmtROI(payload.roi)}</text>
+          )}
+        </g>
+      );
+    };
+
+    // Pairs the month's ROI with the rupee figure behind it, so the reader does
+    // not have to cross-reference the P&L chart to size the move.
+    const RoiTooltip = ({ active, payload }) => {
+      if (!active || !payload?.length) return null;
+      const d = payload[0].payload;
+      const row = (k, v) => (
+        <div style={{ color: MUTED_C, display: "flex", justifyContent: "space-between", gap: 16 }}>
+          <span>{k}</span>
+          <span style={{ color: "var(--text)", fontWeight: 700, fontFamily: "'DM Mono', monospace" }}>{v}</span>
+        </div>
+      );
+      return (
+        <div style={{ background: TIP_BG, border: `1px solid ${TIP_BORDER}`, borderRadius: 8,
+          padding: "10px 14px", fontSize: 12, minWidth: 150 }}>
+          <div style={{ color: "var(--text)", fontWeight: 700, marginBottom: 5 }}>{d.label}</div>
+          {d.hasData
+            ? <>{row("ROI", fmtROI(d.roi))}{row("Net P&L", fmtSign(d.pnl))}</>
+            : <div style={{ color: "var(--muted2)" }}>Not booked yet</div>}
+        </div>
+      );
+    };
+
     const tabs = [
     { id: "monthly", label: "Monthly Report" },
     { id: "quarterly", label: "Quarter Summary" },
@@ -1207,36 +1275,73 @@ const quarterDropdown = quarterDetail
                         <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY NET
                             P&L (₹)</div>
                         <ResponsiveContainer width="100%" height={220}>
-                            <BarChart data={trendData} barSize={50}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                            <BarChart data={trendData} barSize={24}>
+                                <CartesianGrid stroke={BORDER} vertical={false} />
                                 <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
                                 <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
                                     axisLine={false} tickLine={false} />
                                     <Tooltip content={<CustomTooltip />} />
-                                    <ReferenceLine y={0} stroke={BORDER} />
-                                    <Bar dataKey="pnl" name="Net P&L" radius={[6, 6, 0, 0]}>
+                                    <ReferenceLine y={0} stroke={AXIS_C} strokeWidth={1} />
+                                    <Bar dataKey="pnl" name="Net P&L" radius={[4, 4, 0, 0]}>
                                         {trendData.map((d, i) => <Cell key={i} fill={d.pnl>= 0 ? POS : NEG} />)}
                                     </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                     <div id="rpt-monthly-roi" style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
-                        <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700, marginBottom: 14 }}>MONTHLY ROI
-                            (%)</div>
-                        <ResponsiveContainer width="100%" height={220}>
-                            <LineChart data={trendData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={BORDER} />
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                            gap: 12, flexWrap: "wrap" }}>
+                            <div style={{ color: MUTED_C , fontSize: 12, fontWeight: 700 }}>MONTHLY ROI (%)</div>
+                            <div style={{ color: "var(--muted2)", fontSize: 11 }}>on {fmtFund(totals.totalFund)} AUM</div>
+                        </div>
+                        {/* Headline reads without hovering — the tooltip enhances, never gates. */}
+                        {roiStats && (
+                        <div style={{ display: "flex", gap: 22, flexWrap: "wrap", margin: "12px 0 2px" }}>
+                            {[["Best", roiStats.best.label, fmtROI(roiStats.best.roi)],
+                              ["Worst", roiStats.worst.label, fmtROI(roiStats.worst.roi)],
+                              ["Average", `${roiStats.months} months booked`, fmtROI(roiStats.avg)]].map(([k, sub, v]) => (
+                            <div key={k}>
+                                <div style={{ color: "var(--muted2)", fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                                    textTransform: "uppercase" }}>{k}</div>
+                                <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 800,
+                                    fontFamily: "'DM Mono', monospace" }}>{v}</div>
+                                <div style={{ color: "var(--muted2)", fontSize: 10 }}>{sub}</div>
+                            </div>
+                            ))}
+                        </div>
+                        )}
+                        <ResponsiveContainer width="100%" height={218}>
+                            <AreaChart data={roiTrend} margin={{ top: 20, right: 14, left: 0, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="roiWash" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={SERIES} stopOpacity={0.20} />
+                                        <stop offset="100%" stopColor={SERIES} stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid stroke={BORDER} vertical={false} />
                                 <XAxis dataKey="month" tick={{ fill: MUTED_C , fontSize: 12 }} axisLine={false}
                                     tickLine={false} />
                                 <YAxis tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> `${(v*100).toFixed(2)}%`}
-                                    axisLine={false} tickLine={false} />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <ReferenceLine y={0} stroke={BORDER} />
-                                    <Line dataKey="roi" name="ROI %" stroke={ACCENT} strokeWidth={3} dot={{ fill:
-                                        ACCENT, r: 6 }} />
-                            </LineChart>
+                                    axisLine={false} tickLine={false} width={58} />
+                                    <Tooltip content={<RoiTooltip />} cursor={{ stroke: MUTED_C, strokeWidth: 1 }} />
+                                    {roiStats && (
+                                    <ReferenceLine y={roiStats.avg} stroke={MUTED_C} strokeDasharray="4 4"
+                                        label={{ value: `avg ${fmtROI(roiStats.avg)}`, position: "insideTopRight",
+                                        fill: MUTED_C, fontSize: 10, fontWeight: 700 }} />
+                                    )}
+                                    <ReferenceLine y={0} stroke={AXIS_C} strokeWidth={1} />
+                                    <Area type="monotone" dataKey="roi" name="ROI" stroke={SERIES} strokeWidth={2}
+                                        strokeLinecap="round" strokeLinejoin="round" fill="url(#roiWash)"
+                                        baseValue={0} connectNulls={false} isAnimationActive={false}
+                                        dot={<RoiDot />} activeDot={{ r: 6, fill: SERIES, stroke: CARD, strokeWidth: 2 }} />
+                            </AreaChart>
                         </ResponsiveContainer>
+                        {roiStats && roiStats.pending.length > 0 && (
+                        <div style={{ color: "var(--muted2)", fontSize: 10, marginTop: 6 }}>
+                            {roiStats.pending.join(", ")} not booked yet — the line stops rather than plotting 0.00%.
+                        </div>
+                        )}
                     </div>
                 </div>
 
