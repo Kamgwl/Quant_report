@@ -178,9 +178,12 @@ def read_quarter(ws):
     return out
 
 def read_month_detail(wb, label):
-    """(sheet_name, {code: (pnl, roi)}) from whichever detail sheet carries
-    `label` in row 2. Keeps the FIRST row per code, mirroring the VLOOKUP the
-    rollup performs — AUG-2026 has two rows coded P3390 and Excel takes row 7."""
+    """(sheet_name, {code: (pnl, roi, n_rows)}) from whichever detail sheet
+    carries `label` in row 2.
+
+    An account can occupy more than one row (AUG-2026 and JULY-2026 both hold
+    two rows coded P3390). Values are SUMMED across them, and n_rows reports how
+    many were folded together — the rollup's VLOOKUP only ever sees the first."""
     want = label.strip().upper()
     for ws in wb.worksheets:
         if ws.title.startswith("FY-"):
@@ -198,19 +201,26 @@ def read_month_detail(wb, label):
             if not is_data_row(ws, r):
                 continue
             code = str(ws.cell(r, COL_CODE).value).strip()
-            if code in out:
-                continue
-            out[code] = (safe_int(ws.cell(r, c_pnl).value),
-                         safe_float(ws.cell(r, c_roi).value) if c_roi else 0.0)
+            pnl = safe_int(ws.cell(r, c_pnl).value)
+            roi = safe_float(ws.cell(r, c_roi).value) if c_roi else 0.0
+            prev = out.get(code, (0, 0.0, 0))
+            out[code] = (prev[0] + pnl, prev[1] + roi, prev[2] + 1)
         return ws.title, out
     return None, {}
 
 
 def repair_from_detail(wb, ws_q, rows):
-    """Patch months the rollup dropped to 0 via a broken external reference.
+    """Reconcile the quarter rollup against the local monthly detail sheets.
 
-    Only fills where the rollup is 0 AND the local detail sheet is non-zero, so
-    it is a no-op once the workbook's formulas are corrected."""
+    Two defects are corrected, both of them cases where the rollup's VLOOKUP
+    does not reflect what the detail sheet actually holds:
+
+      LINK  the rollup formula points at an external workbook copy of the sheet
+            ('[2]AUG-2026'), IFERROR swallows the dead link and yields 0
+      MERGE the account occupies several rows and VLOOKUP returns only the first
+
+    Nothing else is touched, so a rollup value that legitimately differs is left
+    alone and the whole pass becomes a no-op once the workbook is repaired."""
     fixed = 0
     for slot, col in (("m1", COL_M1), ("m2", COL_M2), ("m3", COL_M3)):
         label = ws_q.cell(MONTH_HEADER_ROW, col).value
@@ -220,14 +230,26 @@ def repair_from_detail(wb, ws_q, rows):
         if not detail:
             continue
         for code, rec in rows.items():
-            if rec[slot] != 0:
+            pnl, roi, n_rows = detail.get(code, (0, 0.0, 0))
+            broken_link = rec[slot] == 0 and pnl != 0
+            merged_rows = n_rows > 1
+            if not (broken_link or merged_rows):
                 continue
-            pnl, roi = detail.get(code, (0, 0.0))
-            if pnl == 0:
-                continue
+
+            if merged_rows:
+                # Summed ROIs are meaningless across rows carrying different
+                # fund bases — recompute against the account's own fund.
+                fund = rows[code].get("fund") or 0
+                roi = (pnl / (fund * 1e7) * 100) if fund else roi
+                kind, note = "MERGE", f"{n_rows} rows -> 1"
+            else:
+                kind, note = "LINK", "rollup 0"
+
+            was = rec[slot]
             rec[slot], rec[slot + "_roi"] = pnl, roi
             fixed += 1
-            print(f"    [FIX] {code:<9} {label.strip():<5} rollup 0 -> {pnl:>12,}  (from {sheet})")
+            print(f"    [{kind}] {code:<9} {label.strip():<5} {note:<12} "
+                  f"{was:>12,} -> {pnl:>12,}  (from {sheet})")
     return fixed
 
 
@@ -242,7 +264,7 @@ def extract_accounts(excel_path):
     n = repair_from_detail(wb, wb[SHEET_Q1], q1)
     if SHEET_Q2 in wb.sheetnames:
         n += repair_from_detail(wb, wb[SHEET_Q2], q2)
-    print(f"    Recovered {n} month value(s) the rollup lost to broken links.")
+    print(f"    Reconciled {n} month value(s) against the detail sheets.")
 
     # Union of codes, Q1 order first, then any Q2-only codes appended.
     codes = list(q1.keys()) + [c for c in q2 if c not in q1]
