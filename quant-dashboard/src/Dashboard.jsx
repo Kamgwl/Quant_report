@@ -719,6 +719,14 @@ const buildPdfReport = async () => {
         M + (i % 2) * (cardW + gapX), cursorY + Math.floor(i / 2) * (cardH + gapY),
         cardW, cardH, c[0], c[1], c[2], c[3], c[4]));
       cursorY += 2 * (cardH + gapY) + 8;
+
+      // These headline figures are the whole book; the F&O tables that follow
+      // leave Cash / ETF out, so the two will not tie out.
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(110, 124, 144);
+      doc.text("Covers all " + totals.count + " accounts, including Cash / ETF / ATS ("
+        + fundStr(cashScope.fund) + " AUM, FY " + pnlStr(cashScope.fy)
+        + "). The F&O tables below exclude them.", M, cursorY);
+      cursorY += 14;
     }
 
     if (printSel.monthly) {
@@ -823,6 +831,17 @@ const totals = useMemo(() => {
   const byMonth = monthAgg(normalSection, totalFund);
   return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL,
     julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count, byMonth };
+}, []);
+
+// Cash / ETF accounts sitting inside the headline totals (group 1 includes
+// them; the F&O tables below do not). Drives the scope note under the KPI row.
+const cashScope = useMemo(() => {
+  const rows = DATA_ALL.filter(r => r.group === 1 && r.isCash);
+  return {
+    count: rows.length,
+    fund: rows.reduce((s, r) => s + r.fund, 0),
+    fy: rows.reduce((s, r) => s + r.year, 0),
+  };
 }, []);
 
 // Current-month KPI tile, and the open quarter card's dropdown contents.
@@ -1074,6 +1093,17 @@ const quarterDropdown = quarterDetail
                     sub={fmtROI(totals.byMonth[m.key].roi)}
                     color={totals.byMonth[m.key].pnl >= 0 ? POS : NEG} />
                 ))}
+            </div>
+            )}
+
+            {/* Scope note — these headline figures are the whole book. The F&O
+                tables and charts below deliberately leave Cash / ETF out, so the
+                two sets of numbers do not tie out. */}
+            {(!printMode || printSel.summary) && (
+            <div style={{ color: "var(--muted2)", fontSize: 11, marginTop: 10 }}>
+                Covers all {totals.count} accounts, <strong>including</strong> Cash / ETF / ATS
+                ({fmtFund(cashScope.fund)} AUM, FY {fmtSign(cashScope.fy)}). The F&O tables and charts
+                below exclude them — see the Cash / ETF / ATS tab.
             </div>
             )}
         </div>
@@ -1576,8 +1606,9 @@ const quarterDropdown = quarterDetail
                     gap: 10 }}>
                     <span style={{ fontSize: 18 }}>💰</span>
                     <span style={{ color: "#fbbf24" , fontSize: 13 }}>
-                        Cash / ETF / ATS accounts are shown <strong>separately</strong> here and excluded from all other
-                        reports to avoid skewing F&O strategy numbers.
+                        Cash / ETF / ATS accounts are broken out <strong>separately</strong> here and kept out of the
+                        F&O tables and charts so they don't skew strategy numbers. They <strong>are</strong> counted in
+                        the dashboard's headline totals (Total AUM and Q1 / Q2 / FY P&L).
                     </span>
                 </div>
 
