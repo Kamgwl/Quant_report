@@ -280,6 +280,49 @@ const QUARTERS = [
 const QUARTER_BY_ID = { ...Object.fromEntries(QUARTERS.map(q => [q.id, q])),
 fy: { id: "fy", label: "FY (YTD)", span: "Apr–Sep", months: FY_MONTHS.map(m => m.key) } };
 
+// Per-month roll-up for any set of accounts. ROI uses the population's own fund
+// as the denominator, so the same helper serves the F&O row and the Cash tab.
+const monthAgg = (rows, totalFund) => {
+const out = {};
+FY_MONTHS.forEach(m => {
+  const pnl = rows.reduce((s, r) => s + (r[m.key] || 0), 0);
+  out[m.key] = {
+    pnl,
+    roi: totalFund > 0 ? pnl / (totalFund * 1e7) : 0,
+    winners: rows.filter(r => (r[m.key] || 0) > 0).length,
+    losers: rows.filter(r => (r[m.key] || 0) < 0).length,
+    hasData: rows.some(r => (r[m.key] || 0) !== 0),
+  };
+});
+return out;
+};
+
+// Contents of a quarter card's dropdown, derived from a monthAgg map.
+const buildQuarterDetail = (id, byMonth, totalFund) => {
+if (!id) return null;
+const q = QUARTER_BY_ID[id];
+const rows = q.months.map(k => ({ ...FY_MONTHS.find(m => m.key === k), ...byMonth[k] }));
+const pnl = rows.reduce((s, r) => s + r.pnl, 0);
+const live = rows.filter(r => r.hasData);
+return {
+  q, rows, pnl,
+  roi: totalFund > 0 ? pnl / (totalFund * 1e7) : 0,
+  peak: Math.max(1, ...rows.map(r => Math.abs(r.pnl))),
+  best:  live.length ? live.reduce((a, b) => (b.pnl > a.pnl ? b : a)) : null,
+  worst: live.length ? live.reduce((a, b) => (b.pnl < a.pnl ? b : a)) : null,
+  pending: rows.filter(r => !r.hasData),
+};
+};
+
+// Latest month carrying numbers; falls back to the calendar month so a freshly
+// rolled month shows as zero rather than pinning to the previous one.
+const latestMonth = (byMonth) => {
+const withData = [...FY_MONTHS].reverse().find(m => byMonth[m.key].hasData);
+if (withData) return withData;
+const cal = new Date().getMonth();
+return FY_MONTHS.find(m => m.cal === cal) || FY_MONTHS[FY_MONTHS.length - 1];
+};
+
 const fmt = (n) => {
 if (Math.abs(n) >= 1e7) return `₹${(n/1e7).toFixed(2)}Cr`;
 if (Math.abs(n) >= 1e5) return `₹${(n/1e5).toFixed(2)}L`;
@@ -547,18 +590,22 @@ const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
 
 // Quarter drill-down dropdown: 'q1' | 'q2' | 'fy' | null. Clicking the open
 // card toggles it shut; Esc or a click anywhere off the KPI cards also closes.
+// The Cash tab keeps its own copy so the two rows never fight over one value.
 const [openQuarter, setOpenQuarter] = useState(null);
+const [openCashQuarter, setOpenCashQuarter] = useState(null);
 const toggleQuarter = (id) => setOpenQuarter(cur => (cur === id ? null : id));
+const toggleCashQuarter = (id) => setOpenCashQuarter(cur => (cur === id ? null : id));
 useEffect(() => {
-  if (!openQuarter) return;
-  const onKey = (e) => { if (e.key === "Escape") setOpenQuarter(null); };
+  if (!openQuarter && !openCashQuarter) return;
+  const closeAll = () => { setOpenQuarter(null); setOpenCashQuarter(null); };
+  const onKey = (e) => { if (e.key === "Escape") closeAll(); };
   const onDown = (e) => {
-    if (e.target && e.target.closest && !e.target.closest("[data-kpi-card]")) setOpenQuarter(null);
+    if (e.target && e.target.closest && !e.target.closest("[data-kpi-card]")) closeAll();
   };
   window.addEventListener("keydown", onKey);
   document.addEventListener("mousedown", onDown);
   return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("mousedown", onDown); };
-}, [openQuarter]);
+}, [openQuarter, openCashQuarter]);
 
 // ── Report / Print state ──
 const [showPrintModal, setShowPrintModal] = useState(false);
@@ -971,48 +1018,18 @@ const totals = useMemo(() => {
   const winners = normalSection.filter(r => r.q1 > 0).length;
   const losers = normalSection.filter(r => r.q1 < 0).length;
   const count = normalSection.length;
-  // Per-month roll-up keyed by month key — drives the quarter popup and the
+  // Per-month roll-up keyed by month key — drives the quarter dropdown and the
   // current-month tile without hardcoding another `xxxPnL` per month.
-  const byMonth = {};
-  FY_MONTHS.forEach(m => {
-    const pnl = normalSection.reduce((s, r) => s + (r[m.key] || 0), 0);
-    byMonth[m.key] = {
-      pnl,
-      roi: totalFund > 0 ? pnl / (totalFund * 1e7) : 0,
-      winners: normalSection.filter(r => (r[m.key] || 0) > 0).length,
-      losers: normalSection.filter(r => (r[m.key] || 0) < 0).length,
-      hasData: normalSection.some(r => (r[m.key] || 0) !== 0),
-    };
-  });
+  const byMonth = monthAgg(normalSection, totalFund);
   return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL,
     julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count, byMonth };
 }, []);
 
-// ── Current-month KPI tile ──
-// Prefer the latest FY month that actually has numbers; only fall back to the
-// calendar month when nothing has been booked yet, so a freshly-rolled month
-// never blanks the headline tile at ₹0.
-const currentMonth = useMemo(() => {
-  const latest = [...FY_MONTHS].reverse().find(m => totals.byMonth[m.key].hasData);
-  if (latest) return latest;
-  const cal = new Date().getMonth();
-  return FY_MONTHS.find(m => m.cal === cal) || FY_MONTHS[FY_MONTHS.length - 1];
-}, [totals]);
-
-// ── Quarter popup contents ──
-// Month ROI uses total AUM as the denominator, matching the KPI cards.
-const quarterDetail = useMemo(() => {
-  if (!openQuarter) return null;
-  const q = QUARTER_BY_ID[openQuarter];
-  const rows = q.months.map(k => ({ ...FY_MONTHS.find(m => m.key === k), ...totals.byMonth[k] }));
-  const pnl = rows.reduce((s, r) => s + r.pnl, 0);
-  const roi = totals.totalFund > 0 ? pnl / (totals.totalFund * 1e7) : 0;
-  const peak = Math.max(1, ...rows.map(r => Math.abs(r.pnl)));
-  const live = rows.filter(r => r.hasData);
-  const best  = live.length ? live.reduce((a, b) => (b.pnl > a.pnl ? b : a)) : null;
-  const worst = live.length ? live.reduce((a, b) => (b.pnl < a.pnl ? b : a)) : null;
-  return { q, rows, pnl, roi, peak, best, worst, pending: rows.filter(r => !r.hasData) };
-}, [openQuarter, totals]);
+// Current-month KPI tile, and the open quarter card's dropdown contents.
+const currentMonth = useMemo(() => latestMonth(totals.byMonth), [totals]);
+const quarterDetail = useMemo(
+  () => buildQuarterDetail(openQuarter, totals.byMonth, totals.totalFund),
+  [openQuarter, totals]);
 
 // Only the open card renders a panel, so one shared node is enough.
 const quarterDropdown = quarterDetail
@@ -1074,9 +1091,15 @@ const quarterDropdown = quarterDetail
         .slice(-5).reverse(), [q2Ranked]);
 
     // ── Best/Worst performers Q1 (Cash) ──
+    // Filtered on the full year, not Q1, so an account that only traded in
+    // Jul–Sep still reaches the charts and the detail table.
     const cashRanked = useMemo(() => [...DATA_CASH]
-    .filter(r => r.q1 !== 0)
+    .filter(r => r.year !== 0)
     .sort((a, b) => b.q1_roi - a.q1_roi), []);
+
+    // Same set ordered by FY ROI, for the Cash tab's full-year ranking.
+    const cashRankedFY = useMemo(() => [...cashRanked]
+    .sort((a, b) => b.year_roi - a.year_roi), [cashRanked]);
 
     const cashTop5 = cashRanked.slice(0, 5);
     const cashBot5 = cashRanked.slice(-5).reverse();
@@ -1724,18 +1747,24 @@ const quarterDropdown = quarterDetail
 
             {/* ── CASH / ETF / ATS ── */}
             {showSection("cash") && (() => {
-            const cashSection = DATA_ALL.filter(r => r.group === 2 && r.code !== "P3361");
+            // Same population as the charts and detail table below. This used to
+            // read `group === 2` (the Deepesh group), which has no Jul–Sep data
+            // and is not the Cash/ETF set at all.
+            const cashSection = DATA_CASH;
             const cashTotalFund = cashSection.reduce((s, r) => s + r.fund, 0);
-            const cashApr = cashSection.reduce((s, r) => s + r.apr, 0);
-            const cashMay = cashSection.reduce((s, r) => s + r.may, 0);
-            const cashJun = cashSection.reduce((s, r) => s + r.jun, 0);
-            const cashQ1 = cashApr + cashMay + cashJun;
-            const cashQ1ROI = cashTotalFund > 0 ? cashQ1 / (cashTotalFund * 1e7) : 0;
-            const cashTrend = [
-            { month: "April", pnl: cashApr, roi: cashTotalFund > 0 ? cashApr / (cashTotalFund * 1e7) : 0 },
-            { month: "May", pnl: cashMay, roi: cashTotalFund > 0 ? cashMay / (cashTotalFund * 1e7) : 0 },
-            { month: "June", pnl: cashJun, roi: cashTotalFund > 0 ? cashJun / (cashTotalFund * 1e7) : 0 },
-            ];
+            const cashByMonth = monthAgg(cashSection, cashTotalFund);
+            const cashQ1 = QUARTERS[0].months.reduce((s, k) => s + cashByMonth[k].pnl, 0);
+            const cashQ2 = QUARTERS[1].months.reduce((s, k) => s + cashByMonth[k].pnl, 0);
+            const cashFY = cashQ1 + cashQ2;
+            const cashROI = (v) => cashTotalFund > 0 ? v / (cashTotalFund * 1e7) : 0;
+            const cashMonth = latestMonth(cashByMonth);
+            const cashDetail = buildQuarterDetail(openCashQuarter, cashByMonth, cashTotalFund);
+            const cashDropdown = cashDetail
+              ? <QuarterMonths detail={cashDetail} totalFund={cashTotalFund} />
+              : null;
+            const cashTrend = FY_MONTHS.map(m => ({
+              month: m.label, pnl: cashByMonth[m.key].pnl, roi: cashByMonth[m.key].roi,
+            }));
             return (
             <div className="print-section">
                 <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
@@ -1756,13 +1785,28 @@ const quarterDropdown = quarterDetail
                 <div style={{ display: "grid" , gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" , gap: 12,
                     marginBottom: 24 }}>
                     <StatCard label="Cash AUM" value={fmtFund(cashTotalFund)}
-                        sub="Total Utilized Fund" color="#fbbf24" />
-                    <StatCard label="Q1 Net P&L" value={fmtSign(cashQ1)} color={cashQ1>= 0 ? POS : NEG} />
-                        <StatCard label="Q1 ROI" value={fmtROI(cashQ1ROI)} color={cashQ1ROI>= 0 ? POS : NEG} />
-                            <StatCard label="April P&L" value={fmtSign(cashApr)} color={cashApr>= 0 ? POS : NEG} />
-                                <StatCard label="May P&L" value={fmtSign(cashMay)} color={cashMay>= 0 ? POS : NEG} />
-                                    <StatCard label="June P&L" value={fmtSign(cashJun)} color={cashJun>= 0 ? POS : NEG}
-                                        />
+                        sub={`${cashSection.length} accounts`} color="#fbbf24" />
+                    <StatCard label="Q1 Net P&L" value={fmtSign(cashQ1)} sub={`ROI ${fmtROI(cashROI(cashQ1))} · Apr–Jun`}
+                        color={cashQ1>= 0 ? POS : NEG}
+                        onClick={printMode ? undefined : () => toggleCashQuarter("q1")} hint="Monthly split"
+                        open={openCashQuarter === "q1"} dropdown={cashDropdown} />
+                    <StatCard label="Q2 Net P&L" value={fmtSign(cashQ2)} sub={`ROI ${fmtROI(cashROI(cashQ2))} · Jul–Sep`}
+                        color={cashQ2>= 0 ? POS : NEG}
+                        onClick={printMode ? undefined : () => toggleCashQuarter("q2")} hint="Monthly split"
+                        open={openCashQuarter === "q2"} dropdown={cashDropdown} />
+                    <StatCard label="FY Net P&L (YTD)" value={fmtSign(cashFY)} sub={`ROI ${fmtROI(cashROI(cashFY))} · Q1 + Q2`}
+                        color={cashFY>= 0 ? POS : NEG}
+                        onClick={printMode ? undefined : () => toggleCashQuarter("fy")} hint="All months"
+                        open={openCashQuarter === "fy"} dropdown={cashDropdown} />
+                    <StatCard label={`${cashMonth.label} P&L`} value={fmtSign(cashByMonth[cashMonth.key].pnl)}
+                        sub={`ROI ${fmtROI(cashByMonth[cashMonth.key].roi)} · Current month`}
+                        color={cashByMonth[cashMonth.key].pnl >= 0 ? POS : NEG} />
+                    {/* Browser print can't open dropdowns — lay the months out flat. */}
+                    {printMode && FY_MONTHS.map(m => (
+                    <StatCard key={m.key} label={`${m.label} P&L`} value={fmtSign(cashByMonth[m.key].pnl)}
+                        sub={fmtROI(cashByMonth[m.key].roi)}
+                        color={cashByMonth[m.key].pnl >= 0 ? POS : NEG} />
+                    ))}
                 </div>
 
                 {/* Trend charts */}
@@ -1805,12 +1849,12 @@ const quarterDropdown = quarterDetail
                     </div>
                 </div>
 
-                {/* Q1 bar chart */}
-                {sectionHead("Cash / ETF — Best to Worst (Q1)")}
+                {/* Full-year bar chart */}
+                {sectionHead("Cash / ETF — Best to Worst (FY YTD)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}`,
                     marginBottom: 28 }}>
-                    <ResponsiveContainer width="100%" height={Math.max(200, cashRanked.length * 38)}>
-                        <BarChart data={cashRanked.map(r=> ({ name: r.name, pnl: r.q1, roi: +(r.q1_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
+                    <ResponsiveContainer width="100%" height={Math.max(200, cashRankedFY.length * 38)}>
+                        <BarChart data={cashRankedFY.map(r=> ({ name: r.name, pnl: r.year, roi: +(r.year_roi*100).toFixed(2), fund: r.fund, fullName: r.name,
                             strategy: r.strategy }))} layout="vertical" barSize={20} margin={{ left: 165 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={BORDER} horizontal={false} />
                             <XAxis type="number" tick={{ fill: MUTED_C , fontSize: 11 }} tickFormatter={v=> fmt(v)}
@@ -1826,15 +1870,15 @@ const quarterDropdown = quarterDetail
                                         <div style={{ color: "var(--gold)" , fontWeight: 700 }}>{d?.fullName}</div>
                                         <div style={{ color: MUTED_C , fontSize: 11 }}>{d?.strategy || "—"} ·
                                             ₹{d?.fund}Cr</div>
-                                        <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>Q1 P&L: {fmt(d?.pnl)}</div>
-                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>Q1 ROI: {d?.roi?.toFixed(2)}%
+                                        <div style={{ color: d?.pnl>= 0 ? POS : NEG }}>FY P&L: {fmt(d?.pnl)}</div>
+                                        <div style={{ color: d?.roi>= 0 ? POS : NEG }}>FY ROI: {d?.roi?.toFixed(2)}%
                                         </div>
                                     </div>
                                     );
                                     }} />
                                     <ReferenceLine x={0} stroke={BORDER} />
-                                    <Bar dataKey="pnl" name="Q1 P&L" radius={[0,4,4,0]}>
-                                        {cashRanked.map((d, i) => <Cell key={i} fill={d.q1>= 0 ? "#fbbf24" : NEG} />)}
+                                    <Bar dataKey="pnl" name="FY P&L" radius={[0,4,4,0]}>
+                                        {cashRankedFY.map((d, i) => <Cell key={i} fill={d.year>= 0 ? "#fbbf24" : NEG} />)}
                                     </Bar>
                         </BarChart>
                     </ResponsiveContainer>
