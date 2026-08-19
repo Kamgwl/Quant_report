@@ -40,6 +40,16 @@ COL_M3_ROI   = 12
 
 DATA_START_ROW = 4   # row 3 is the header row; data from row 4
 
+# Each quarter sheet's month columns are VLOOKUPs into that month's detail sheet
+# (APR-2026, ... AUG-2026), matched on the label in row 2 ("AUG" / "AUG ROI").
+# The detail sheet carries the same label over its own monthly total column.
+#
+# Some rollup rows point at an EXTERNAL workbook copy of the detail sheet
+# ('[2]AUG-2026'). Excel's IFERROR swallows the broken link and returns 0, so
+# those accounts silently vanish from the quarter even though the local detail
+# sheet has their numbers. Fall back to the local sheet whenever that happens.
+MONTH_HEADER_ROW = 2
+
 # NAME_OVERRIDES:  "CODE": (display_name, strategy, fund_override_or_None)
 # fund_override is in Crores; set None to use value from Excel.
 NAME_OVERRIDES = {
@@ -167,6 +177,60 @@ def read_quarter(ws):
         }
     return out
 
+def read_month_detail(wb, label):
+    """(sheet_name, {code: (pnl, roi)}) from whichever detail sheet carries
+    `label` in row 2. Keeps the FIRST row per code, mirroring the VLOOKUP the
+    rollup performs — AUG-2026 has two rows coded P3390 and Excel takes row 7."""
+    want = label.strip().upper()
+    for ws in wb.worksheets:
+        if ws.title.startswith("FY-"):
+            continue
+        hdr = {}
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(MONTH_HEADER_ROW, c).value
+            if isinstance(v, str):
+                hdr[v.strip().upper()] = c
+        if want not in hdr:
+            continue
+        c_pnl, c_roi = hdr[want], hdr.get(want + " ROI")
+        out = {}
+        for r in range(DATA_START_ROW, ws.max_row + 1):
+            if not is_data_row(ws, r):
+                continue
+            code = str(ws.cell(r, COL_CODE).value).strip()
+            if code in out:
+                continue
+            out[code] = (safe_int(ws.cell(r, c_pnl).value),
+                         safe_float(ws.cell(r, c_roi).value) if c_roi else 0.0)
+        return ws.title, out
+    return None, {}
+
+
+def repair_from_detail(wb, ws_q, rows):
+    """Patch months the rollup dropped to 0 via a broken external reference.
+
+    Only fills where the rollup is 0 AND the local detail sheet is non-zero, so
+    it is a no-op once the workbook's formulas are corrected."""
+    fixed = 0
+    for slot, col in (("m1", COL_M1), ("m2", COL_M2), ("m3", COL_M3)):
+        label = ws_q.cell(MONTH_HEADER_ROW, col).value
+        if not isinstance(label, str):
+            continue
+        sheet, detail = read_month_detail(wb, label)
+        if not detail:
+            continue
+        for code, rec in rows.items():
+            if rec[slot] != 0:
+                continue
+            pnl, roi = detail.get(code, (0, 0.0))
+            if pnl == 0:
+                continue
+            rec[slot], rec[slot + "_roi"] = pnl, roi
+            fixed += 1
+            print(f"    [FIX] {code:<9} {label.strip():<5} rollup 0 -> {pnl:>12,}  (from {sheet})")
+    return fixed
+
+
 def extract_accounts(excel_path):
     print(f"[1/4] Reading {os.path.basename(excel_path)} ...")
     wb = openpyxl.load_workbook(excel_path, data_only=True)
@@ -174,6 +238,11 @@ def extract_accounts(excel_path):
     q1 = read_quarter(wb[SHEET_Q1])
     q2 = read_quarter(wb[SHEET_Q2]) if SHEET_Q2 in wb.sheetnames else {}
     print(f"    Q1 sheet: {len(q1)} accounts | Q2 sheet: {len(q2)} accounts.")
+
+    n = repair_from_detail(wb, wb[SHEET_Q1], q1)
+    if SHEET_Q2 in wb.sheetnames:
+        n += repair_from_detail(wb, wb[SHEET_Q2], q2)
+    print(f"    Recovered {n} month value(s) the rollup lost to broken links.")
 
     # Union of codes, Q1 order first, then any Q2-only codes appended.
     codes = list(q1.keys()) + [c for c in q2 if c not in q1]

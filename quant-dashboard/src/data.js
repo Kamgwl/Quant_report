@@ -73,7 +73,7 @@ export const RAW = [
 // Deepesh group
 { code:"P3013", name:"Deepesh_1", strategy:"NA", segment:"NSEFO", group:2, fund:30, apr:3718000, apr_roi:1.2393, may:-191500, may_roi:-0.0638, jun:269000, jun_roi:0.0897, jul:0, jul_roi:0, aug:0, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P3112", name:"Deepesh_2", strategy:"NA", segment:"CASH", group:2, fund:2, apr:3262972, apr_roi:16.3149, may:0, may_roi:0, jun:0, jun_roi:0, jul:0, jul_roi:0, aug:0, aug_roi:0, sep:0, sep_roi:0 },
-{ code:"P3361", name:"Nishaanth", strategy:"NA", segment:"", group:2, fund:0, apr:0, apr_roi:0, may:212000, may_roi:0, jun:-500, jun_roi:0, jul:614980, jul_roi:2.0499, aug:0, aug_roi:0, sep:0, sep_roi:0 },
-{ code:"P3354", name:"Sahil Rathore", strategy:"self", segment:"NSEFO", group:1, fund:0, apr:0, apr_roi:0, may:0, may_roi:0, jun:-410000, jun_roi:0, jul:971446, jul_roi:0, aug:0, aug_roi:0, sep:0, sep_roi:0 },
+{ code:"P3361", name:"Nishaanth", strategy:"NA", segment:"", group:2, fund:0, apr:0, apr_roi:0, may:212000, may_roi:0, jun:-500, jun_roi:0, jul:614980, jul_roi:2.0499, aug:184099, aug_roi:0.6137, sep:0, sep_roi:0 },
+{ code:"P3354", name:"Sahil Rathore", strategy:"self", segment:"NSEFO", group:1, fund:0, apr:0, apr_roi:0, may:0, may_roi:0, jun:-410000, jun_roi:0, jul:971446, jul_roi:0, aug:163800, aug_roi:0, sep:0, sep_roi:0 },
 { code:"P3152", name:"Rashil Khetan", strategy:"", segment:"NSEFO", group:1, fund:0.1, apr:0, apr_roi:0, may:0, may_roi:0, jun:0, jun_roi:0, jul:-12015, jul_roi:-1.2015, aug:2506, aug_roi:0.2506, sep:0, sep_roi:0 }
 ];

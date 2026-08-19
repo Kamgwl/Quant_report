@@ -1385,7 +1385,7 @@ const quarterDropdown = quarterDetail
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
                             <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
-                                {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI", "Jul P&L", "Jul ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"].map(h => (
+                                {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI", "Jul P&L", "Jul ROI", "Aug P&L", "Aug ROI", "Sep P&L", "Sep ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"].map(h => (
                                 <th key={h} style={{ padding: "11px 10px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                                 ))}
@@ -1410,6 +1410,8 @@ const quarterDropdown = quarterDetail
                                 [r.jun, r.jun_roi],
                                 [r.q1, r.q1_roi],
                                 [r.jul, r.jul_roi],
+                                [r.aug, r.aug_roi],
+                                [r.sep, r.sep_roi],
                                 [r.q2, r.q2_roi],
                                 [r.year, r.year_roi],
                                 ].map(([pnl, roi], j) => (
@@ -1644,7 +1646,8 @@ const quarterDropdown = quarterDetail
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
                             <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
-                                {["#","Code","Name","Strategy","Fund (Cr)","Apr P&L","May P&L","Jun P&L","Q1 P&L","Q1 ROI"].map(h => (
+                                {["#","Code","Name","Strategy","Fund (Cr)","Apr P&L","May P&L","Jun P&L","Q1 P&L","Q1 ROI",
+                                  "Jul P&L","Aug P&L","Sep P&L","Q2 P&L","Q2 ROI","FY P&L","FY ROI"].map(h => (
                                 <th key={h} style={{ padding:"11px 10px", textAlign:"left", color:"var(--muted)",
                                     fontWeight:700, letterSpacing:1, whiteSpace:"nowrap" }}>{h}</th>
                                 ))}
@@ -1667,6 +1670,16 @@ const quarterDropdown = quarterDetail
                                 ))}
                                 <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: r.q1_roi>= 0 ? POS
                                     : NEG, fontWeight: 700 }}>{fmtROI(r.q1_roi)}</td>
+                                {[r.jul, r.aug, r.sep, r.q2].map((v, j) => (
+                                <td key={j} style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: v>= 0 ?
+                                    POS : NEG, whiteSpace:"nowrap", fontWeight: v !== 0 ? 700 : 400 }}>{v === 0 ? "—" : fmtSign(v)}</td>
+                                ))}
+                                <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: r.q2_roi>= 0 ? POS
+                                    : NEG, fontWeight: 700 }}>{fmtROI(r.q2_roi)}</td>
+                                <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: r.year>= 0 ? POS
+                                    : NEG, whiteSpace:"nowrap", fontWeight: r.year !== 0 ? 700 : 400 }}>{r.year === 0 ? "—" : fmtSign(r.year)}</td>
+                                <td style={{ padding:"9px 10px", fontFamily:"'DM Mono',monospace", color: r.year_roi>= 0 ? POS
+                                    : NEG, fontWeight: 700 }}>{fmtROI(r.year_roi)}</td>
                             </tr>
                             ))}
                         </tbody>
