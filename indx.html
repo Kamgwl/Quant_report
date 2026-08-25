@@ -643,12 +643,184 @@ const handleExportExcel = async () => {
   setShowExportModal(false);
 };
 
+// ── SINGLE-ACCOUNT REPORT ───────────────────────────────────────────────────
+// One wide row of 23 columns reads like a database dump, not a report. When the
+// User tab is narrowed to exactly one account, export a portrait statement
+// instead: identity band, key figures with peer context, then a month-by-month
+// table carrying a running FY total and an inline magnitude bar.
+const exportAccountReport = async (r) => {
+  try {
+    if (!ExcelJS) { alert("ExcelJS library not loaded. Please check your internet connection."); return; }
+
+    const NAVY = "FF0D1526", CYAN = "FF00E5FF", ACC = "FF0091B3", SUB = "FFB9C6D9";
+    const INK = "FF1F2A3D", MUTED = "FF6B7A90", LINE = "FFD5DEEC", BAND = "FFF3F6FB";
+    const POS_BG = "FFE6F4EA", POS_FG = "FF137333";
+    const NEG_BG = "FFFCE8E6", NEG_FG = "FFC5221F";
+    const F = "Segoe UI";
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Quant Strategy Dashboard";
+    const safeName = (r.name || "Account").replace(/[\\\/\?\*\[\]:]/g, "-").slice(0, 28);
+    const ws = wb.addWorksheet(safeName || "Account", {
+      views: [{ showGridLines: false }],
+      pageSetup: {
+        paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+      },
+    });
+    ws.columns = [{ width: 2 }, { width: 30 }, { width: 18 }, { width: 12 }, { width: 18 }, { width: 26 }, { width: 2 }];
+
+    const cell = (row, col, value, o = {}) => {
+      const c = ws.getRow(row).getCell(col);
+      if (value !== undefined) c.value = value;
+      if (o.numFmt) c.numFmt = o.numFmt;
+      c.font = { name: F, size: o.size || 10, bold: !!o.bold, italic: !!o.italic, color: { argb: o.fg || INK } };
+      if (o.bg) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: o.bg } };
+      c.alignment = { vertical: "middle", horizontal: o.align || "left", indent: o.indent || 0, wrapText: !!o.wrap };
+      if (o.border) c.border = o.border;
+      return c;
+    };
+    // Style every cell in the range first, THEN merge — ExcelJS only paints a
+    // merged block solidly if the slave cells carry the fill too.
+    const band = (row, c1, c2, value, o = {}) => {
+      for (let c = c1; c <= c2; c++) cell(row, c, c === c1 ? value : null, o);
+      ws.mergeCells(row, c1, row, c2);
+      return ws.getRow(row).getCell(c1);
+    };
+    const under = { bottom: { style: "thin", color: { argb: LINE } } };
+    const topline = { top: { style: "thin", color: { argb: LINE } } };
+    const pnlTone = (v) => (v > 0 ? { fg: POS_FG, bg: POS_BG } : v < 0 ? { fg: NEG_FG, bg: NEG_BG } : { fg: MUTED });
+    const pctTxt = (v) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+    const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+    // ── peer context: a number means more next to the field it competes in ──
+    const q1Rank = ranked.findIndex(x => x.code === r.code) + 1;
+    const fySorted = [...DATA].filter(x => x.year !== 0).sort((a, b) => b.year_roi - a.year_roi);
+    const fyRank = fySorted.findIndex(x => x.code === r.code) + 1;
+    const avg = (arr, k) => (arr.length ? arr.reduce((s, x) => s + x[k], 0) / arr.length : 0);
+    const peerQ1 = avg(ranked, "q1_roi"), peerFY = avg(fySorted, "year_roi");
+
+    // ── month series ──
+    const months = FY_MONTHS.map(m => ({
+      label: m.label + " 2026", key: m.key, q: m.q,
+      pnl: r[m.key] || 0, roi: r[m.key + "_roi"] || 0,
+    }));
+    const traded = months.filter(m => m.pnl !== 0 || m.roi !== 0);
+    const wins = traded.filter(m => m.pnl > 0).length;
+    const maxAbs = Math.max(1, ...traded.map(m => Math.abs(m.pnl)));
+    const best = traded.slice().sort((a, b) => b.pnl - a.pnl)[0];
+    const worst = traded.slice().sort((a, b) => a.pnl - b.pnl)[0];
+    const q2Traded = months.filter(m => m.q === "q2" && (m.pnl !== 0 || m.roi !== 0)).length;
+
+    let R = 1;
+    ws.getRow(R).height = 6; R++;
+
+    // ── IDENTITY BAND ──
+    band(R, 2, 6, (r.name || "").toUpperCase(), { size: 18, bold: true, fg: CYAN, bg: NAVY, indent: 1 });
+    ws.getRow(R).height = 34; R++;
+    band(R, 2, 6, "ACCOUNT PERFORMANCE REPORT   ·   QUANT STRATEGY FY 2026-27", { size: 9, fg: SUB, bg: NAVY, indent: 1 });
+    ws.getRow(R).height = 18; R++;
+    band(R, 2, 6, `Code ${r.code}    ·    ${r.strategy || "No strategy tag"}    ·    ${r.segment || "—"}    ·    Capital ₹${r.fund.toFixed(2)} Cr    ·    Generated ${today}`,
+      { size: 9, fg: MUTED, bg: BAND, indent: 1 });
+    ws.getRow(R).height = 20; R += 2;
+
+    // ── KEY FIGURES ──
+    band(R, 2, 6, "KEY FIGURES", { size: 10, bold: true, fg: ACC, border: { bottom: { style: "medium", color: { argb: ACC } } } });
+    ws.getRow(R).height = 22; R++;
+
+    const figure = (label, value, o, note) => {
+      cell(R, 2, label, { size: 10, fg: INK, border: under });
+      for (let c = 3; c <= 4; c++) cell(R, c, c === 3 ? value : null, { size: 11, bold: true, align: "right", border: under, ...o });
+      ws.mergeCells(R, 3, R, 4);
+      for (let c = 5; c <= 6; c++) cell(R, c, c === 5 ? (note || null) : null, { size: 9, fg: MUTED, italic: true, border: under, indent: 1 });
+      ws.mergeCells(R, 5, R, 6);
+      ws.getRow(R).height = 19; R++;
+    };
+    figure("Q1 Net P&L  (Apr–Jun)", r.q1, { numFmt: PNL_FMT, ...pnlTone(r.q1) },
+      q1Rank ? `Rank ${q1Rank} of ${ranked.length} F&O accounts trading in Q1` : "");
+    figure("Q1 ROI", r.q1_roi, { numFmt: ROI_FMT, ...pnlTone(r.q1_roi) },
+      `Peer average ${pctTxt(peerQ1)}  ·  ${r.q1_roi >= peerQ1 ? "above" : "below"} average`);
+    figure("Q2 Net P&L  (Jul–Sep, YTD)", r.q2, { numFmt: PNL_FMT, ...pnlTone(r.q2) },
+      `${q2Traded} of 3 months traded so far`);
+    figure("Q2 ROI  (YTD)", r.q2_roi, { numFmt: ROI_FMT, ...pnlTone(r.q2_roi) }, "");
+    figure("FY Net P&L  (YTD)", r.year, { numFmt: PNL_FMT, bold: true, ...pnlTone(r.year) },
+      fyRank ? `Rank ${fyRank} of ${fySorted.length} F&O accounts trading this FY` : "");
+    figure("FY ROI  (YTD)", r.year_roi, { numFmt: ROI_FMT, bold: true, ...pnlTone(r.year_roi) },
+      `Peer average ${pctTxt(peerFY)}  ·  ${r.year_roi >= peerFY ? "above" : "below"} average`);
+    figure("Annualised ROI", r.ann_roi, { numFmt: ROI_FMT, ...pnlTone(r.ann_roi) },
+      "Q1 run-rate × 4 — a projection, not a commitment");
+    figure("Capital Deployed", r.fund, { numFmt: FUND_FMT, fg: INK }, "As recorded in the strategy workbook");
+    if (best) figure("Best Month", best.pnl, { numFmt: PNL_FMT, ...pnlTone(best.pnl) }, `${best.label}  ·  ${pctTxt(best.roi)}`);
+    if (worst && traded.length > 1) figure("Weakest Month", worst.pnl, { numFmt: PNL_FMT, ...pnlTone(worst.pnl) }, `${worst.label}  ·  ${pctTxt(worst.roi)}`);
+    figure("Profitable Months", `${wins} of ${traded.length}`, { fg: INK, align: "right" }, "Months closing with a positive net result");
+    R++;
+
+    // ── MONTH-BY-MONTH ──
+    band(R, 2, 6, "MONTH-BY-MONTH BREAKDOWN", { size: 10, bold: true, fg: ACC, border: { bottom: { style: "medium", color: { argb: ACC } } } });
+    ws.getRow(R).height = 22; R++;
+
+    ["Period", "Net P&L", "ROI", "Cumulative FY", "Relative Size"].forEach((h, i) => {
+      const left = i === 0 || i === 4;
+      cell(R, i + 2, h, { size: 9, bold: true, fg: CYAN, bg: NAVY, align: left ? "left" : "right", indent: left ? 1 : 0 });
+    });
+    ws.getRow(R).height = 22; R++;
+
+    let cum = 0;
+    const totalRow = (label, pnl, roi, tone) => {
+      cell(R, 2, label, { size: 10, bold: true, fg: INK, bg: tone, border: topline, indent: 1 });
+      cell(R, 3, pnl, { size: 10, bold: true, numFmt: PNL_FMT, align: "right", border: topline, ...pnlTone(pnl) });
+      cell(R, 4, roi, { size: 10, bold: true, numFmt: ROI_FMT, align: "right", border: topline, ...pnlTone(roi) });
+      cell(R, 5, cum, { size: 10, bold: true, numFmt: PNL_FMT, align: "right", bg: tone, border: topline, fg: cum >= 0 ? POS_FG : NEG_FG });
+      cell(R, 6, null, { bg: tone, border: topline });
+      ws.getRow(R).height = 20; R++;
+    };
+
+    months.forEach((m, i) => {
+      const isTraded = m.pnl !== 0 || m.roi !== 0;
+      cum += m.pnl;
+      const zebra = i % 2 === 1 ? BAND : undefined;
+      cell(R, 2, m.label, { size: 10, fg: isTraded ? INK : MUTED, italic: !isTraded, bg: zebra, border: under, indent: 1 });
+      if (isTraded) {
+        cell(R, 3, m.pnl, { size: 10, numFmt: PNL_FMT, align: "right", border: under, ...pnlTone(m.pnl) });
+        cell(R, 4, m.roi, { size: 10, numFmt: ROI_FMT, align: "right", border: under, ...pnlTone(m.roi) });
+        cell(R, 5, cum, { size: 10, numFmt: PNL_FMT, align: "right", bg: zebra, border: under, fg: cum >= 0 ? POS_FG : NEG_FG });
+        // Inline magnitude bar scaled against this account's largest month, so
+        // the shape of the year reads without opening a chart.
+        const width = Math.max(1, Math.round((Math.abs(m.pnl) / maxAbs) * 20));
+        cell(R, 6, "█".repeat(width), { size: 10, align: "left", bg: zebra, fg: m.pnl >= 0 ? POS_FG : NEG_FG, indent: 1 });
+      } else {
+        cell(R, 3, "—", { size: 10, align: "right", fg: MUTED, bg: zebra, border: under });
+        cell(R, 4, "—", { size: 10, align: "right", fg: MUTED, bg: zebra, border: under });
+        cell(R, 5, "—", { size: 10, align: "right", fg: MUTED, bg: zebra, border: under });
+        cell(R, 6, "not traded", { size: 9, italic: true, fg: MUTED, bg: zebra, indent: 1 });
+      }
+      ws.getRow(R).height = 19; R++;
+      if (m.key === "jun") totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
+      if (m.key === "sep") totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
+    });
+    totalRow("FY TOTAL  (YTD)", r.year, r.year_roi, "FFE3ECF7");
+    R++;
+
+    band(R, 2, 6, "Generated from the Quant Strategy dashboard  ·  Figures are net, as recorded in the source workbook  ·  Q3–Q4 pending",
+      { size: 8, italic: true, fg: MUTED, indent: 1 });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const slug = (r.name || r.code).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    saveAs(blob, `Quant_${slug}_${r.code}_FY2026-27.xlsx`);
+  } catch (error) {
+    console.error("Account report export failed", error);
+    alert("An error occurred during export: " + error.message);
+  }
+};
+
 // ── Per-tab (per-sheet) exports ──
 const exportUserSheet = () => {
   const rows = userFiltered;
   if (!rows.length) { alert("No accounts match \"" + userSearch.trim() + "\" — nothing to export."); return; }
-  // Name the file after the match so a single-user export is self-describing.
-  const label = userSearch.trim() ? (rows.length === 1 ? rows[0].name : userSearch.trim()) : "";
+  // A single match gets the portrait statement; several still get the grid.
+  if (rows.length === 1) return exportAccountReport(rows[0]);
+  const label = userSearch.trim();
   const slug = label ? "_" + label.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
   return exportRowsToExcel(rows, COLS_ACCOUNT_FULL, "User Performance",
     `Quant_UserPerformance${slug}_FY2026-27.xlsx`);
