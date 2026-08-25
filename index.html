@@ -589,6 +589,7 @@ const TIP_BORDER = theme === 'dark' ? '#1e2d4a' : '#d5deec';
 const [view, setView] = useState("monthly"); // monthly | quarterly | user | strategy
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
+const [userSearch, setUserSearch] = useState(""); // User tab: filters the table and scopes its export
 
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
@@ -766,8 +767,15 @@ const handleExportExcel = async () => {
 };
 
 // ── Per-tab (per-sheet) exports ──
-const exportUserSheet = () =>
-  exportRowsToExcel(ranked, COLS_ACCOUNT_FULL, "User Performance", "Quant_UserPerformance_FY2026-27.xlsx");
+const exportUserSheet = () => {
+  const rows = userFiltered;
+  if (!rows.length) { alert("No accounts match \"" + userSearch.trim() + "\" — nothing to export."); return; }
+  // Name the file after the match so a single-user export is self-describing.
+  const label = userSearch.trim() ? (rows.length === 1 ? rows[0].name : userSearch.trim()) : "";
+  const slug = label ? "_" + label.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
+  return exportRowsToExcel(rows, COLS_ACCOUNT_FULL, "User Performance",
+    `Quant_UserPerformance${slug}_FY2026-27.xlsx`);
+};
 const exportCashSheet = () =>
   exportRowsToExcel(cashRanked, COLS_ACCOUNT_FULL, "Cash ETF ATS", "Quant_Cash-ETF-ATS_FY2026-27.xlsx");
 const exportStrategySheet = () =>
@@ -973,9 +981,11 @@ const buildPdfReport = async () => {
     }
 
     if (printSel.user) {
-      sectionTitle("User Performance (Q1 / Q2 / FY)");
+      // Mirror the User tab's search: the report covers exactly the rows on screen.
+      const q = userSearch.trim();
+      sectionTitle("User Performance (Q1 / Q2 / FY)" + (q ? " - filtered: " + q : ""));
       addTable(["#", "Code", "Name", "Strategy", "Fund", "Q1 P&L", "Q1 ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"],
-        ranked.map((r, i) => [String(i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+        userFiltered.map((r, i) => [String(userRank.get(r.code) || i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
           pnlStr(r.q1), roiStr(r.q1_roi), pnlStr(r.q2), roiStr(r.q2_roi), pnlStr(r.year), roiStr(r.year_roi)]),
         { 2: { cellWidth: 78 } });
     }
@@ -1080,6 +1090,17 @@ const quarterDropdown = quarterDetail
     const ranked = useMemo(() => [...DATA]
     .filter(r => !r.isCash && r.q1 !== 0)
     .sort((a, b) => b.q1_roi - a.q1_roi), []);
+
+    // User tab search — matches code, name or strategy. Drives both the table
+    // rows and "Export User Sheet", so the export always mirrors what is shown.
+    const userQuery = userSearch.trim().toLowerCase();
+    const userFiltered = useMemo(() => !userQuery ? ranked : ranked.filter(r =>
+        (r.code || "").toLowerCase().includes(userQuery) ||
+        (r.name || "").toLowerCase().includes(userQuery) ||
+        (r.strategy || "").toLowerCase().includes(userQuery)), [ranked, userQuery]);
+
+    // Keep the "#" column showing the account's true Q1-ROI rank while filtered.
+    const userRank = useMemo(() => new Map(ranked.map((r, i) => [r.code, i + 1])), [ranked]);
 
     const top5 = useMemo(() => ranked
         .filter(r => {
@@ -1739,6 +1760,35 @@ const quarterDropdown = quarterDetail
                     <ExportBtn onClick={exportUserSheet} label="Export User Sheet" />
                 </div>
                 {sectionHead("User-Wise Performance Table")}
+
+                {/* Search — filters the table below and scopes the Export User Sheet button */}
+                <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                    <div style={{ position: "relative", flex: "0 1 340px", minWidth: 220 }}>
+                        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                            color: MUTED2_C, fontSize: 13, pointerEvents: "none" }}>&#128269;</span>
+                        <input
+                            type="text"
+                            value={userSearch}
+                            onChange={e => setUserSearch(e.target.value)}
+                            onKeyDown={e => { if (e.key === "Escape") setUserSearch(""); }}
+                            placeholder="Search user by name, code or strategy…"
+                            style={{ width: "100%", padding: "9px 34px 9px 34px", borderRadius: 8,
+                                border: `1px solid ${BORDER}`, background: "var(--panel)", color: "var(--text)",
+                                fontFamily: "'DM Sans', sans-serif", fontSize: 12, outline: "none" }} />
+                        {userSearch && (
+                        <button onClick={() => setUserSearch("")} title="Clear search"
+                            style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                                background: "none", border: "none", color: MUTED_C, cursor: "pointer",
+                                fontSize: 15, lineHeight: 1, padding: 2 }}>&times;</button>
+                        )}
+                    </div>
+                    <span style={{ color: MUTED_C, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
+                        {userSearch.trim()
+                            ? `${userFiltered.length} of ${ranked.length} ACCOUNTS · EXPORT COVERS THE MATCH`
+                            : `${ranked.length} ACCOUNTS`}
+                    </span>
+                </div>
+
             <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
@@ -1750,11 +1800,16 @@ const quarterDropdown = quarterDetail
                             </tr>
                         </thead>
                         <tbody>
-                            {ranked.map((r, i) => {
+                            {userFiltered.length === 0 && (
+                            <tr><td colSpan={23} style={{ padding: "22px 10px", textAlign: "center", color: MUTED_C }}>
+                                No accounts match “{userSearch.trim()}”.
+                            </td></tr>
+                            )}
+                            {userFiltered.map((r, i) => {
                             const rowBg = i % 2 === 0 ? CARD : "var(--row-alt)";
                             return (
                             <tr key={r.code} style={{ background: rowBg, borderBottom: `1px solid ${BORDER}22` }}>
-                                <td style={{ padding: "9px 10px" , color: "var(--muted2)" }}>{i + 1}</td>
+                                <td style={{ padding: "9px 10px" , color: "var(--muted2)" }}>{userRank.get(r.code) || i + 1}</td>
                                 <td style={{ padding: "9px 10px" , color: ACCENT, fontFamily: "'DM Mono', monospace" ,
                                     fontSize: 11 }}>{r.code}</td>
                                 <td style={{ padding: "9px 10px" , fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>{r.name}</td>
@@ -2104,7 +2159,9 @@ const quarterDropdown = quarterDetail
                   { id: "summary",   label: "Executive Summary (KPI cards)" },
                   { id: "monthly",   label: "Monthly Report (trend + selected month)" },
                   { id: "quarterly", label: "Quarter Summary (Top/Bottom + full Q1)" },
-                  { id: "user",      label: "User Performance table" },
+                  { id: "user",      label: userSearch.trim()
+                      ? `User Performance table (filtered: ${userFiltered.length} of ${ranked.length})`
+                      : "User Performance table" },
                   { id: "strategy",  label: "Strategy Analysis" },
                   { id: "cash",      label: "Cash / ETF / ATS" },
                 ].map(s => (
