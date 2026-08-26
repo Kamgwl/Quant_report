@@ -451,6 +451,27 @@ const COLS_STRATEGY = [
 
 const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2", year:"FY" };
 
+// Selectable periods on the User tab, in report order. Every period reads
+// `r[key]` for P&L and `r[key + "_roi"]` for ROI, so one list drives the table,
+// the Excel exports and the PDF section alike.
+const PERIODS = [
+  { key: "apr",  label: "Apr",  full: "April",         kind: "month",   q: "q1" },
+  { key: "may",  label: "May",  full: "May",           kind: "month",   q: "q1" },
+  { key: "jun",  label: "Jun",  full: "June",          kind: "month",   q: "q1" },
+  { key: "q1",   label: "Q1",   full: "Q1 total",      kind: "quarter", q: "q1" },
+  { key: "jul",  label: "Jul",  full: "July",          kind: "month",   q: "q2" },
+  { key: "aug",  label: "Aug",  full: "August",        kind: "month",   q: "q2" },
+  { key: "sep",  label: "Sep",  full: "September",     kind: "month",   q: "q2" },
+  { key: "q2",   label: "Q2",   full: "Q2 total",      kind: "quarter", q: "q2" },
+  { key: "year", label: "FY",   full: "FY total (YTD)", kind: "total" },
+];
+const ALL_PERIODS = Object.fromEntries(PERIODS.map(p => [p.key, true]));
+const PERIOD_GROUPS = [
+  { title: "Q1 · Apr–Jun", keys: ["apr", "may", "jun", "q1"] },
+  { title: "Q2 · Jul–Sep", keys: ["jul", "aug", "sep", "q2"] },
+  { title: "Full year",    keys: ["year"] },
+];
+
 function Dashboard() {
 const [theme, setTheme] = useState(() => localStorage.getItem("qd-theme") || "dark");
 
@@ -469,6 +490,21 @@ const [view, setView] = useState("monthly"); // monthly | quarterly | user | str
 const [selectedMonth, setSelectedMonth] = useState("q1");
 const [sortBy, setSortBy] = useState("roi");
 const [userSearch, setUserSearch] = useState(""); // User tab: filters the table and scopes its export
+const [periodSel, setPeriodSel] = useState(ALL_PERIODS); // User tab: which months/quarters to show
+const [showPeriods, setShowPeriods] = useState(false);   // period picker popover
+
+// Close the period popover on Esc or a click outside it — same contract as the
+// KPI quarter drill-downs above.
+useEffect(() => {
+  if (!showPeriods) return;
+  const onKey = (e) => { if (e.key === "Escape") setShowPeriods(false); };
+  const onDown = (e) => {
+    if (e.target && e.target.closest && !e.target.closest("[data-period-filter]")) setShowPeriods(false);
+  };
+  window.addEventListener("keydown", onKey);
+  document.addEventListener("mousedown", onDown);
+  return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("mousedown", onDown); };
+}, [showPeriods]);
 
 const [showExportModal, setShowExportModal] = useState(false);
 const [exportScope, setExportScope] = useState("all"); // 'all' | 'fo' | 'cash'
@@ -648,7 +684,7 @@ const handleExportExcel = async () => {
 // User tab is narrowed to exactly one account, export a portrait statement
 // instead: identity band, key figures with peer context, then a month-by-month
 // table carrying a running FY total and an inline magnitude bar.
-const exportAccountReport = async (r) => {
+const exportAccountReport = async (r, sel) => {
   try {
     if (!ExcelJS) { alert("ExcelJS library not loaded. Please check your internet connection."); return; }
 
@@ -700,8 +736,13 @@ const exportAccountReport = async (r) => {
     const avg = (arr, k) => (arr.length ? arr.reduce((s, x) => s + x[k], 0) / arr.length : 0);
     const peerQ1 = avg(ranked, "q1_roi"), peerFY = avg(fySorted, "year_roi");
 
+    // ── period selection ──
+    const on = (k) => !sel || sel[k] !== false;
+    const allOn = PERIODS.every(p => on(p.key));
+    const scope = PERIODS.filter(p => on(p.key)).map(p => p.full).join("  ·  ");
+
     // ── month series ──
-    const months = FY_MONTHS.map(m => ({
+    const months = FY_MONTHS.filter(m => on(m.key)).map(m => ({
       label: m.label + " 2026", key: m.key, q: m.q,
       pnl: r[m.key] || 0, roi: r[m.key + "_roi"] || 0,
     }));
@@ -710,7 +751,8 @@ const exportAccountReport = async (r) => {
     const maxAbs = Math.max(1, ...traded.map(m => Math.abs(m.pnl)));
     const best = traded.slice().sort((a, b) => b.pnl - a.pnl)[0];
     const worst = traded.slice().sort((a, b) => a.pnl - b.pnl)[0];
-    const q2Traded = months.filter(m => m.q === "q2" && (m.pnl !== 0 || m.roi !== 0)).length;
+    // Counted off the account itself — a period filter must not change the fact.
+    const q2Traded = FY_MONTHS.filter(m => m.q === "q2" && ((r[m.key] || 0) !== 0 || (r[m.key + "_roi"] || 0) !== 0)).length;
 
     let R = 1;
     ws.getRow(R).height = 6; R++;
@@ -722,7 +764,12 @@ const exportAccountReport = async (r) => {
     ws.getRow(R).height = 18; R++;
     band(R, 2, 6, `Code ${r.code}    ·    ${r.strategy || "No strategy tag"}    ·    ${r.segment || "—"}    ·    Capital ₹${r.fund.toFixed(2)} Cr    ·    Generated ${today}`,
       { size: 9, fg: MUTED, bg: BAND, indent: 1 });
-    ws.getRow(R).height = 20; R += 2;
+    ws.getRow(R).height = 20; R++;
+    if (!allOn) {
+      band(R, 2, 6, `Filtered report — showing ${scope} only`, { size: 9, bold: true, fg: ACC, bg: "FFE3ECF7", indent: 1 });
+      ws.getRow(R).height = 18; R++;
+    }
+    R++;
 
     // ── KEY FIGURES ──
     band(R, 2, 6, "KEY FIGURES", { size: 10, bold: true, fg: ACC, border: { bottom: { style: "medium", color: { argb: ACC } } } });
@@ -736,30 +783,37 @@ const exportAccountReport = async (r) => {
       ws.mergeCells(R, 5, R, 6);
       ws.getRow(R).height = 19; R++;
     };
-    figure("Q1 Net P&L  (Apr–Jun)", r.q1, { numFmt: PNL_FMT, ...pnlTone(r.q1) },
-      q1Rank ? `Rank ${q1Rank} of ${ranked.length} F&O accounts trading in Q1` : "");
-    figure("Q1 ROI", r.q1_roi, { numFmt: ROI_FMT, ...pnlTone(r.q1_roi) },
-      `Peer average ${pctTxt(peerQ1)}  ·  ${r.q1_roi >= peerQ1 ? "above" : "below"} average`);
-    figure("Q2 Net P&L  (Jul–Sep, YTD)", r.q2, { numFmt: PNL_FMT, ...pnlTone(r.q2) },
-      `${q2Traded} of 3 months traded so far`);
-    figure("Q2 ROI  (YTD)", r.q2_roi, { numFmt: ROI_FMT, ...pnlTone(r.q2_roi) }, "");
-    figure("FY Net P&L  (YTD)", r.year, { numFmt: PNL_FMT, bold: true, ...pnlTone(r.year) },
-      fyRank ? `Rank ${fyRank} of ${fySorted.length} F&O accounts trading this FY` : "");
-    figure("FY ROI  (YTD)", r.year_roi, { numFmt: ROI_FMT, bold: true, ...pnlTone(r.year_roi) },
-      `Peer average ${pctTxt(peerFY)}  ·  ${r.year_roi >= peerFY ? "above" : "below"} average`);
-    figure("Annualised ROI", r.ann_roi, { numFmt: ROI_FMT, ...pnlTone(r.ann_roi) },
-      "Q1 run-rate × 4 — a projection, not a commitment");
+    if (on("q1")) {
+      figure("Q1 Net P&L  (Apr–Jun)", r.q1, { numFmt: PNL_FMT, ...pnlTone(r.q1) },
+        q1Rank ? `Rank ${q1Rank} of ${ranked.length} F&O accounts trading in Q1` : "");
+      figure("Q1 ROI", r.q1_roi, { numFmt: ROI_FMT, ...pnlTone(r.q1_roi) },
+        `Peer average ${pctTxt(peerQ1)}  ·  ${r.q1_roi >= peerQ1 ? "above" : "below"} average`);
+    }
+    if (on("q2")) {
+      figure("Q2 Net P&L  (Jul–Sep, YTD)", r.q2, { numFmt: PNL_FMT, ...pnlTone(r.q2) },
+        `${q2Traded} of 3 months traded so far`);
+      figure("Q2 ROI  (YTD)", r.q2_roi, { numFmt: ROI_FMT, ...pnlTone(r.q2_roi) }, "");
+    }
+    if (on("year")) {
+      figure("FY Net P&L  (YTD)", r.year, { numFmt: PNL_FMT, bold: true, ...pnlTone(r.year) },
+        fyRank ? `Rank ${fyRank} of ${fySorted.length} F&O accounts trading this FY` : "");
+      figure("FY ROI  (YTD)", r.year_roi, { numFmt: ROI_FMT, bold: true, ...pnlTone(r.year_roi) },
+        `Peer average ${pctTxt(peerFY)}  ·  ${r.year_roi >= peerFY ? "above" : "below"} average`);
+      figure("Annualised ROI", r.ann_roi, { numFmt: ROI_FMT, ...pnlTone(r.ann_roi) },
+        "Q1 run-rate × 4 — a projection, not a commitment");
+    }
     figure("Capital Deployed", r.fund, { numFmt: FUND_FMT, fg: INK }, "As recorded in the strategy workbook");
     if (best) figure("Best Month", best.pnl, { numFmt: PNL_FMT, ...pnlTone(best.pnl) }, `${best.label}  ·  ${pctTxt(best.roi)}`);
     if (worst && traded.length > 1) figure("Weakest Month", worst.pnl, { numFmt: PNL_FMT, ...pnlTone(worst.pnl) }, `${worst.label}  ·  ${pctTxt(worst.roi)}`);
-    figure("Profitable Months", `${wins} of ${traded.length}`, { fg: INK, align: "right" }, "Months closing with a positive net result");
+    if (traded.length) figure("Profitable Months", `${wins} of ${traded.length}`, { fg: INK, align: "right" }, "Months closing with a positive net result");
     R++;
 
     // ── MONTH-BY-MONTH ──
-    band(R, 2, 6, "MONTH-BY-MONTH BREAKDOWN", { size: 10, bold: true, fg: ACC, border: { bottom: { style: "medium", color: { argb: ACC } } } });
+    const allMonthsOn = FY_MONTHS.every(m => on(m.key));
+    band(R, 2, 6, allMonthsOn ? "MONTH-BY-MONTH BREAKDOWN" : "SELECTED PERIODS", { size: 10, bold: true, fg: ACC, border: { bottom: { style: "medium", color: { argb: ACC } } } });
     ws.getRow(R).height = 22; R++;
 
-    ["Period", "Net P&L", "ROI", "Cumulative FY", "Relative Size"].forEach((h, i) => {
+    ["Period", "Net P&L", "ROI", allMonthsOn ? "Cumulative FY" : "Cumulative", months.length ? "Relative Size" : ""].forEach((h, i) => {
       const left = i === 0 || i === 4;
       cell(R, i + 2, h, { size: 9, bold: true, fg: CYAN, bg: NAVY, align: left ? "left" : "right", indent: left ? 1 : 0 });
     });
@@ -770,7 +824,9 @@ const exportAccountReport = async (r) => {
       cell(R, 2, label, { size: 10, bold: true, fg: INK, bg: tone, border: topline, indent: 1 });
       cell(R, 3, pnl, { size: 10, bold: true, numFmt: PNL_FMT, align: "right", border: topline, ...pnlTone(pnl) });
       cell(R, 4, roi, { size: 10, bold: true, numFmt: ROI_FMT, align: "right", border: topline, ...pnlTone(roi) });
-      cell(R, 5, cum, { size: 10, bold: true, numFmt: PNL_FMT, align: "right", bg: tone, border: topline, fg: cum >= 0 ? POS_FG : NEG_FG });
+      // Cumulative only means something once month rows have been written.
+      cell(R, 5, months.length ? cum : "—", { size: 10, bold: true, numFmt: months.length ? PNL_FMT : null,
+        align: "right", bg: tone, border: topline, fg: !months.length ? MUTED : cum >= 0 ? POS_FG : NEG_FG });
       cell(R, 6, null, { bg: tone, border: topline });
       ws.getRow(R).height = 20; R++;
     };
@@ -795,19 +851,28 @@ const exportAccountReport = async (r) => {
         cell(R, 6, "not traded", { size: 9, italic: true, fg: MUTED, bg: zebra, indent: 1 });
       }
       ws.getRow(R).height = 19; R++;
-      if (m.key === "jun") totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
-      if (m.key === "sep") totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
+      // Close a quarter once its last selected month has been written.
+      const next = months[i + 1];
+      if (m.q === "q1" && (!next || next.q !== "q1") && on("q1")) totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
+      if (m.q === "q2" && (!next || next.q !== "q2") && on("q2")) totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
     });
-    totalRow("FY TOTAL  (YTD)", r.year, r.year_roi, "FFE3ECF7");
+    // Quarter totals still belong in the sheet when no month rows were selected.
+    if (!months.length) {
+      if (on("q1")) totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
+      if (on("q2")) totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
+    }
+    if (on("year")) totalRow("FY TOTAL  (YTD)", r.year, r.year_roi, "FFE3ECF7");
     R++;
 
-    band(R, 2, 6, "Generated from the Quant Strategy dashboard  ·  Figures are net, as recorded in the source workbook  ·  Q3–Q4 pending",
+    band(R, 2, 6, (allMonthsOn ? "" : "Cumulative runs over the periods shown, not the full year.  ·  ") +
+      "Generated from the Quant Strategy dashboard  ·  Figures are net, as recorded in the source workbook  ·  Q3–Q4 pending",
       { size: 8, italic: true, fg: MUTED, indent: 1 });
 
     const buffer = await wb.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const slug = (r.name || r.code).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    saveAs(blob, `Quant_${slug}_${r.code}_FY2026-27.xlsx`);
+    const span = allOn ? "" : "_" + PERIODS.filter(p => on(p.key)).map(p => p.label).join("-");
+    saveAs(blob, `Quant_${slug}_${r.code}${span}_FY2026-27.xlsx`);
   } catch (error) {
     console.error("Account report export failed", error);
     alert("An error occurred during export: " + error.message);
@@ -818,12 +883,14 @@ const exportAccountReport = async (r) => {
 const exportUserSheet = () => {
   const rows = userFiltered;
   if (!rows.length) { alert("No accounts match \"" + userSearch.trim() + "\" — nothing to export."); return; }
+  if (!activePeriods.length) { alert("Pick at least one month or quarter in the Periods filter."); return; }
   // A single match gets the portrait statement; several still get the grid.
-  if (rows.length === 1) return exportAccountReport(rows[0]);
+  if (rows.length === 1) return exportAccountReport(rows[0], periodSel);
   const label = userSearch.trim();
   const slug = label ? "_" + label.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
-  return exportRowsToExcel(rows, COLS_ACCOUNT_FULL, "User Performance",
-    `Quant_UserPerformance${slug}_FY2026-27.xlsx`);
+  const span = allPeriodsOn ? "" : "_" + activePeriods.map(p => p.label).join("-");
+  return exportRowsToExcel(rows, userExportCols, "User Performance",
+    `Quant_UserPerformance${slug}${span}_FY2026-27.xlsx`);
 };
 const exportCashSheet = () =>
   exportRowsToExcel(cashRanked, COLS_ACCOUNT_FULL, "Cash ETF ATS", "Quant_Cash-ETF-ATS_FY2026-27.xlsx");
@@ -1032,10 +1099,20 @@ const buildPdfReport = async () => {
     if (printSel.user) {
       // Mirror the User tab's search: the report covers exactly the rows on screen.
       const q = userSearch.trim();
-      sectionTitle("User Performance (Q1 / Q2 / FY)" + (q ? " - filtered: " + q : ""));
-      addTable(["#", "Code", "Name", "Strategy", "Fund", "Q1 P&L", "Q1 ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"],
+      // Portrait A4 runs out of width past ~4 periods, so a wider pick falls
+      // back to the roll-ups and says so rather than printing an unreadable grid.
+      const wide = activePeriods.length > 4;
+      const cols = wide ? activePeriods.filter(p => p.kind !== "month") : activePeriods;
+      sectionTitle("User Performance" + (cols.length ? " (" + cols.map(p => p.label).join(" / ") + ")" : "")
+        + (q ? " - filtered: " + q : ""));
+      if (wide) {
+        doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.setTextColor(120, 133, 152);
+        doc.text("Month detail omitted here for width - the Excel export carries every selected period.", M, cursorY);
+        cursorY += 14;
+      }
+      addTable(["#", "Code", "Name", "Strategy", "Fund", ...cols.flatMap(p => [p.label + " P&L", p.label + " ROI"])],
         userFiltered.map((r, i) => [String(userRank.get(r.code) || i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
-          pnlStr(r.q1), roiStr(r.q1_roi), pnlStr(r.q2), roiStr(r.q2_roi), pnlStr(r.year), roiStr(r.year_roi)]),
+          ...cols.flatMap(p => [pnlStr(r[p.key]), roiStr(r[p.key + "_roi"])])]),
         { 2: { cellWidth: 78 } });
     }
 
@@ -1150,6 +1227,21 @@ const quarterDropdown = quarterDetail
 
     // Keep the "#" column showing the account's true Q1-ROI rank while filtered.
     const userRank = useMemo(() => new Map(ranked.map((r, i) => [r.code, i + 1])), [ranked]);
+
+    // ── Period filter (User tab) ──
+    const activePeriods = useMemo(() => PERIODS.filter(p => periodSel[p.key]), [periodSel]);
+    const allPeriodsOn = activePeriods.length === PERIODS.length;
+    const setPeriods = (pred) => setPeriodSel(Object.fromEntries(PERIODS.map(p => [p.key, pred(p)])));
+    const togglePeriod = (k) => setPeriodSel(s => ({ ...s, [k]: !s[k] }));
+
+    // Excel columns follow the picker: identity stays, period pairs come and go.
+    const userExportCols = useMemo(() => [
+      ...COLS_ACCOUNT_FULL.slice(0, 4),
+      ...activePeriods.flatMap(p => [
+        { key: p.key, label: `${p.label} P&L`, align: "right", numFmt: PNL_FMT, colorCode: true },
+        { key: p.key + "_roi", label: `${p.label} ROI`, align: "right", numFmt: ROI_FMT, colorCode: true },
+      ]),
+    ], [activePeriods]);
 
     const top5 = useMemo(() => ranked
         .filter(r => {
@@ -1831,6 +1923,65 @@ const quarterDropdown = quarterDetail
                                 fontSize: 15, lineHeight: 1, padding: 2 }}>&times;</button>
                         )}
                     </div>
+                    {/* Period picker — scopes the table, the Excel export and the PDF section */}
+                    <div data-period-filter style={{ position: "relative" }}>
+                        <button onClick={() => setShowPeriods(v => !v)}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8,
+                                border: `1px solid ${showPeriods || !allPeriodsOn ? ACCENT : BORDER}`,
+                                background: "var(--panel)", color: allPeriodsOn ? "var(--text)" : ACCENT,
+                                fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 700,
+                                cursor: "pointer", outline: "none", whiteSpace: "nowrap" }}>
+                            <span>&#128197; Periods</span>
+                            <span style={{ color: MUTED_C, fontWeight: 500 }}>
+                                {allPeriodsOn ? "All" : `${activePeriods.length} of ${PERIODS.length}`}
+                            </span>
+                            <span style={{ color: MUTED_C, fontSize: 9 }}>&#9660;</span>
+                        </button>
+                        {showPeriods && (
+                        <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 60, width: 302,
+                            background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 14,
+                            boxShadow: "0 18px 40px rgba(0,0,0,0.45)" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12,
+                                paddingBottom: 12, borderBottom: `1px solid ${BORDER}` }}>
+                                {[
+                                { label: "All", pred: () => true },
+                                { label: "Months only", pred: p => p.kind === "month" },
+                                { label: "Totals only", pred: p => p.kind !== "month" },
+                                { label: "Q1", pred: p => p.q === "q1" },
+                                { label: "Q2", pred: p => p.q === "q2" },
+                                { label: "FY", pred: p => p.key === "year" },
+                                ].map(preset => (
+                                <button key={preset.label} onClick={() => setPeriods(preset.pred)}
+                                    style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+                                        border: `1px solid ${BORDER}`, background: "transparent", color: "var(--violet)",
+                                        cursor: "pointer", outline: "none", fontFamily: "'DM Sans', sans-serif" }}>
+                                    {preset.label}
+                                </button>
+                                ))}
+                            </div>
+                            {PERIOD_GROUPS.map(g => (
+                            <div key={g.title} style={{ marginBottom: 10 }}>
+                                <div style={{ color: MUTED_C, fontSize: 9, fontWeight: 800, letterSpacing: 1.5,
+                                    marginBottom: 6, textTransform: "uppercase" }}>{g.title}</div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {g.keys.map(k => {
+                                    const p = PERIODS.find(x => x.key === k);
+                                    const on = periodSel[k];
+                                    return (
+                                    <button key={k} onClick={() => togglePeriod(k)}
+                                        style={{ padding: "6px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                                            border: `1px solid ${on ? ACCENT : BORDER}`,
+                                            background: on ? "var(--row-alt)" : "transparent",
+                                            color: on ? ACCENT : MUTED_C, cursor: "pointer", outline: "none",
+                                            fontFamily: "'DM Sans', sans-serif" }}>{p.full}</button>
+                                    );
+                                    })}
+                                </div>
+                            </div>
+                            ))}
+                        </div>
+                        )}
+                    </div>
                     <span style={{ color: MUTED_C, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
                         {userSearch.trim()
                             ? `${userFiltered.length} of ${ranked.length} ACCOUNTS · EXPORT COVERS THE MATCH`
@@ -1841,7 +1992,8 @@ const quarterDropdown = quarterDetail
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
                             <tr style={{ background: "var(--panel)" , borderBottom: `1px solid ${BORDER}` }}>
-                                {["#", "Code", "Name", "Strategy", "Fund (Cr)", "Apr P&L", "Apr ROI", "May P&L", "May ROI", "Jun P&L", "Jun ROI", "Q1 P&L", "Q1 ROI", "Jul P&L", "Jul ROI", "Aug P&L", "Aug ROI", "Sep P&L", "Sep ROI", "Q2 P&L", "Q2 ROI", "FY P&L", "FY ROI"].map(h => (
+                                {["#", "Code", "Name", "Strategy", "Fund (Cr)"]
+                                  .concat(activePeriods.flatMap(p => [`${p.label} P&L`, `${p.label} ROI`])).map(h => (
                                 <th key={h} style={{ padding: "11px 10px" , textAlign: "left" , color: "var(--muted)" ,
                                     fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{h}</th>
                                 ))}
@@ -1849,8 +2001,13 @@ const quarterDropdown = quarterDetail
                         </thead>
                         <tbody>
                             {userFiltered.length === 0 && (
-                            <tr><td colSpan={23} style={{ padding: "22px 10px", textAlign: "center", color: MUTED_C }}>
+                            <tr><td colSpan={5 + activePeriods.length * 2} style={{ padding: "22px 10px", textAlign: "center", color: MUTED_C }}>
                                 No accounts match “{userSearch.trim()}”.
+                            </td></tr>
+                            )}
+                            {userFiltered.length > 0 && activePeriods.length === 0 && (
+                            <tr><td colSpan={5} style={{ padding: "22px 10px", textAlign: "center", color: MUTED_C }}>
+                                No periods selected — pick a month or quarter in the Periods filter.
                             </td></tr>
                             )}
                             {userFiltered.map((r, i) => {
@@ -1865,17 +2022,7 @@ const quarterDropdown = quarterDetail
                                 </td>
                                 <td style={{ padding: "9px 10px" , fontFamily: "'DM Mono', monospace" , color: "var(--axis)" }}>
                                     {r.fund}</td>
-                                {[
-                                [r.apr, r.apr_roi],
-                                [r.may, r.may_roi],
-                                [r.jun, r.jun_roi],
-                                [r.q1, r.q1_roi],
-                                [r.jul, r.jul_roi],
-                                [r.aug, r.aug_roi],
-                                [r.sep, r.sep_roi],
-                                [r.q2, r.q2_roi],
-                                [r.year, r.year_roi],
-                                ].map(([pnl, roi], j) => (
+                                {activePeriods.map(p => [r[p.key], r[p.key + "_roi"]]).map(([pnl, roi], j) => (
                                 <>
                                     <td key={`pnl${j}`} style={{ padding: "9px 10px" , fontFamily: "'DM Mono', monospace" ,
                                         color: pnl>= 0 ? POS : NEG, whiteSpace: "nowrap", fontWeight: pnl !== 0 ? 700 : 400 }}>{pnl === 0 ? "—" :
