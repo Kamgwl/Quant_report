@@ -281,15 +281,15 @@ const QuarterMonths = ({ detail, totalFund }) => (
 );
 
 // Small per-sheet "Export to Excel" button (used at the top of each tab)
-const ExportBtn = ({ onClick, label }) => (
-  <button onClick={onClick} title="Download this sheet as a styled Excel file"
+const ExportBtn = ({ onClick, label, icon, title }) => (
+  <button onClick={onClick} title={title || "Download this sheet as a styled Excel file"}
     style={{ display: "inline-flex", alignItems: "center", gap: 6,
       background: "rgba(0, 229, 255, 0.1)", border: `1px solid ${ACCENT}`, color: ACCENT,
       borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700,
       whiteSpace: "nowrap", outline: "none" }}
     onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#000"; }}
     onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0, 229, 255, 0.1)"; e.currentTarget.style.color = ACCENT; }}>
-    <span style={{ fontSize: 13 }}>📥</span> {label || "Export to Excel"}
+    <span style={{ fontSize: 13 }}>{icon || "📥"}</span> {label || "Export to Excel"}
   </button>
 );
 
@@ -373,6 +373,22 @@ const COLS_STRATEGY = [
 ];
 
 const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2", year:"FY" };
+
+// ASCII-only PDF formatters — jsPDF's standard fonts are Latin-1, so the ₹ glyph
+// (and any non-Latin char) corrupts the cell. Use "Rs" instead.
+const pdfNum = (v) => {
+  const a = Math.abs(v);
+  if (a >= 1e7) return (v / 1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return (v / 1e5).toFixed(2) + " L";
+  if (a >= 1e3) return (v / 1e3).toFixed(1) + " K";
+  return String(Math.round(v));
+};
+const pnlStr = (v) => (v >= 0 ? "+Rs " : "-Rs ") + pdfNum(Math.abs(v));
+const roiStr = (v) => (v * 100).toFixed(2) + "%";
+const fundStr = (cr) => "Rs " + (cr >= 1 ? cr.toFixed(2) + " Cr" : (cr * 100).toFixed(0) + " L");
+// Shared PDF palette, so every report page reads as the same document.
+const PDF_DARK = [13, 21, 38], PDF_CYAN = [0, 229, 255];
+const PDF_GREEN = [22, 163, 74], PDF_RED = [225, 29, 72], PDF_MUTED = [120, 133, 152];
 
 // Selectable periods on the User tab, in report order. Every period reads
 // `r[key]` for P&L and `r[key + "_roi"]` for ROI, so one list drives the table,
@@ -837,6 +853,175 @@ const exportMonthlySheet = () => {
   exportRowsToExcel(rows, cols, `Monthly ${lbl}`, `Quant_Monthly_${lbl}_FY2026-27.xlsx`);
 };
 
+// ── USER TAB PDF ────────────────────────────────────────────────────────────
+// The Excel export is for working with the numbers; this is the version you
+// hand to someone. It carries the same cover band as the full dashboard report,
+// then either a statement page for a single account or the comparison table.
+const exportUserPdf = () => {
+  const JsPDF = jsPDF;
+  if (!JsPDF) { alert("PDF library not loaded."); return; }
+  const rows = userFiltered;
+  if (!rows.length) { alert("No accounts match \"" + userSearch.trim() + "\" — nothing to export."); return; }
+  if (!activePeriods.length) { alert("Pick at least one month or quarter in the Periods filter."); return; }
+
+  try {
+    const doc = new JsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 40, CONTENT_W = W - M * 2;
+    const gr = (v) => (v >= 0 ? PDF_GREEN : PDF_RED);
+    let y = 120;
+
+    const sectionTitle = (title) => {
+      doc.setDrawColor(0, 150, 179); doc.setLineWidth(3);
+      doc.line(M, y, M + 24, y);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(20, 30, 50);
+      doc.text(title.toUpperCase(), M + 32, y + 4);
+      y += 20;
+    };
+    const note = (text, italic) => {
+      doc.setFont("helvetica", italic ? "italic" : "normal"); doc.setFontSize(9);
+      doc.setTextColor(PDF_MUTED[0], PDF_MUTED[1], PDF_MUTED[2]);
+      doc.text(text, M, y + 8); y += 18;
+    };
+    const table = (head, body, colStyles) => {
+      autoTable(doc, {
+        startY: y, margin: { left: M, right: M }, theme: "striped",
+        head: [head], body,
+        styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" },
+        headStyles: { fillColor: PDF_DARK, textColor: PDF_CYAN, fontSize: 8 },
+        alternateRowStyles: { fillColor: [244, 246, 251] },
+        columnStyles: colStyles || {},
+        didParseCell: (d) => {
+          if (d.section === "body" && typeof d.cell.raw === "string") {
+            const t = d.cell.raw;
+            if (/^[+-]/.test(t)) d.cell.styles.textColor = t[0] === "-" ? PDF_RED : PDF_GREEN;
+            if (/Total/i.test(String(d.row.raw[0]))) d.cell.styles.fontStyle = "bold";
+          }
+        },
+      });
+      y = doc.lastAutoTable.finalY + 22;
+    };
+
+    // Cover band — identical to the full dashboard report.
+    doc.setFillColor(PDF_DARK[0], PDF_DARK[1], PDF_DARK[2]); doc.rect(0, 0, W, 96, "F");
+    doc.setTextColor(0, 229, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+    doc.text("Quant Strategy Dashboard", M, 42);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(210, 220, 235);
+    doc.text("FY 2026-27   |   Q1 + Q2 Performance Report   |   April - September 2026", M, 64);
+    doc.setFontSize(9); doc.setTextColor(150, 165, 185);
+    doc.text("Generated " + new Date().toLocaleString("en-IN"), M, 82);
+
+    const on = (k) => periodSel[k] !== false;
+    const q = userSearch.trim();
+    const scope = activePeriods.map(p => p.full).join("  |  ");
+    let fileName;
+
+    if (rows.length === 1) {
+      // ── single account: a statement page ──
+      const r = rows[0];
+      sectionTitle("Account Performance - " + r.name);
+      note(`Code ${r.code}   |   ${r.strategy || "No strategy tag"}   |   ${r.segment || "-"}   |   Capital ${fundStr(r.fund)}`);
+      if (!allPeriodsOn) note("Filtered report - showing " + scope + " only", true);
+      y += 6;
+
+      // Roll-up cards for whichever totals are selected.
+      const cards = [];
+      if (on("q1")) cards.push(["Q1 NET P&L  (APR-JUN)", r.q1, r.q1_roi]);
+      if (on("q2")) cards.push(["Q2 NET P&L  (JUL-SEP, YTD)", r.q2, r.q2_roi]);
+      if (on("year")) cards.push(["FY NET P&L  (YTD)", r.year, r.year_roi]);
+      if (cards.length) {
+        const gap = 12, cw = (CONTENT_W - gap * (cards.length - 1)) / cards.length, ch = 66;
+        cards.forEach((c, i) => {
+          const x = M + i * (cw + gap), col = gr(c[1]);
+          doc.setFillColor(247, 249, 252); doc.setDrawColor(226, 232, 242); doc.setLineWidth(0.6);
+          doc.roundedRect(x, y, cw, ch, 6, 6, "FD");
+          doc.setFillColor(col[0], col[1], col[2]); doc.roundedRect(x, y + 6, 4, ch - 12, 2, 2, "F");
+          doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(120, 133, 152);
+          doc.text(c[0], x + 16, y + 20);
+          doc.setFontSize(15); doc.setTextColor(col[0], col[1], col[2]);
+          doc.text(pnlStr(c[1]), x + 16, y + 42);
+          doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90, 105, 125);
+          doc.text("ROI " + roiStr(c[2]), x + 16, y + 57);
+        });
+        y += ch + 24;
+      }
+
+      // Key figures, with the peer context that makes a lone number mean something.
+      const q1Rank = ranked.findIndex(x => x.code === r.code) + 1;
+      const fySorted = [...DATA].filter(x => x.year !== 0).sort((a, b) => b.year_roi - a.year_roi);
+      const fyRank = fySorted.findIndex(x => x.code === r.code) + 1;
+      const avg = (arr, k) => (arr.length ? arr.reduce((s, x) => s + x[k], 0) / arr.length : 0);
+      const monthsSel = FY_MONTHS.filter(m => on(m.key));
+      const tradedSel = monthsSel.filter(m => (r[m.key] || 0) !== 0 || (r[m.key + "_roi"] || 0) !== 0);
+      const wins = tradedSel.filter(m => (r[m.key] || 0) > 0).length;
+      const rank = (n, total) => (n ? `Rank ${n} of ${total}` : "-");
+
+      const figures = [];
+      if (on("q1")) {
+        figures.push(["Q1 ROI", roiStr(r.q1_roi), rank(q1Rank, ranked.length) + " by Q1 ROI  |  peer avg " + roiStr(avg(ranked, "q1_roi"))]);
+      }
+      if (on("year")) {
+        figures.push(["FY ROI (YTD)", roiStr(r.year_roi), rank(fyRank, fySorted.length) + " by FY ROI  |  peer avg " + roiStr(avg(fySorted, "year_roi"))]);
+        figures.push(["Annualised ROI", roiStr(r.ann_roi), "Q1 run-rate x 4 - a projection, not a commitment"]);
+      }
+      figures.push(["Capital Deployed", fundStr(r.fund), "As recorded in the strategy workbook"]);
+      if (tradedSel.length) {
+        const best = tradedSel.slice().sort((a, b) => (r[b.key] || 0) - (r[a.key] || 0))[0];
+        const worst = tradedSel.slice().sort((a, b) => (r[a.key] || 0) - (r[b.key] || 0))[0];
+        figures.push(["Best Month", pnlStr(r[best.key] || 0), best.label + " 2026  |  " + roiStr(r[best.key + "_roi"] || 0)]);
+        if (tradedSel.length > 1) figures.push(["Weakest Month", pnlStr(r[worst.key] || 0), worst.label + " 2026  |  " + roiStr(r[worst.key + "_roi"] || 0)]);
+        figures.push(["Profitable Months", wins + " of " + tradedSel.length, "Months closing with a positive net result"]);
+      }
+      sectionTitle("Key Figures");
+      table(["Metric", "Value", "Context"], figures,
+        { 0: { cellWidth: 130, fontStyle: "bold", textColor: [20, 30, 50] }, 1: { cellWidth: 80, halign: "right" } });
+
+      if (monthsSel.length) {
+        let cum = 0;
+        const body = [];
+        monthsSel.forEach((m, i) => {
+          const pnl = r[m.key] || 0, roi = r[m.key + "_roi"] || 0;
+          const isTraded = pnl !== 0 || roi !== 0;
+          cum += pnl;
+          body.push([m.label + " 2026", isTraded ? pnlStr(pnl) : "not traded",
+            isTraded ? roiStr(roi) : "", isTraded ? pnlStr(cum) : ""]);
+          const next = monthsSel[i + 1];
+          if (m.q === "q1" && (!next || next.q !== "q1") && on("q1")) body.push(["Q1 Total (Apr-Jun)", pnlStr(r.q1), roiStr(r.q1_roi), pnlStr(cum)]);
+          if (m.q === "q2" && (!next || next.q !== "q2") && on("q2")) body.push(["Q2 Total (Jul-Sep)", pnlStr(r.q2), roiStr(r.q2_roi), pnlStr(cum)]);
+        });
+        if (on("year")) body.push(["FY Total (YTD)", pnlStr(r.year), roiStr(r.year_roi), pnlStr(cum)]);
+        const allMonthsOn = FY_MONTHS.every(m => on(m.key));
+        sectionTitle(allMonthsOn ? "Month-by-Month Breakdown" : "Selected Periods");
+        table(["Period", "Net P&L", "ROI", allMonthsOn ? "Cumulative FY" : "Cumulative"], body,
+          { 0: { cellWidth: 130 }, 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } });
+        if (!allMonthsOn) note("Cumulative runs over the periods shown, not the full year.", true);
+      }
+      const slug = (r.name || r.code).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const span = allPeriodsOn ? "" : "_" + activePeriods.map(p => p.label).join("-");
+      fileName = `Quant_${slug}_${r.code}${span}_FY2026-27.pdf`;
+    } else {
+      // ── several accounts: the comparison table ──
+      const wide = activePeriods.length > 4;
+      const cols = wide ? activePeriods.filter(p => p.kind !== "month") : activePeriods;
+      sectionTitle("User Performance (" + cols.map(p => p.label).join(" / ") + ")");
+      if (q) note(`Filtered by "${q}"  -  ${rows.length} of ${ranked.length} accounts`);
+      if (wide) note("Month detail omitted here for width - the Excel export carries every selected period.", true);
+      table(["#", "Code", "Name", "Strategy", "Fund", ...cols.flatMap(p => [p.label + " P&L", p.label + " ROI"])],
+        rows.map((r, i) => [String(userRank.get(r.code) || i + 1), r.code, r.name, r.strategy || "-", r.fund.toFixed(2),
+          ...cols.flatMap(p => [pnlStr(r[p.key]), roiStr(r[p.key + "_roi"])])]),
+        { 2: { cellWidth: 78 } });
+      const slug = q ? "_" + q.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") : "";
+      const span = allPeriodsOn ? "" : "_" + activePeriods.map(p => p.label).join("-");
+      fileName = `Quant_UserPerformance${slug}${span}_FY2026-27.pdf`;
+    }
+
+    doc.save(fileName);
+  } catch (error) {
+    console.error("User PDF export failed", error);
+    alert("An error occurred building the PDF: " + error.message);
+  }
+};
+
 // ── PDF REPORT BUILDER ──────────────────────────────────────────────────────
 const buildPdfReport = async () => {
   const JsPDF = jsPDF;
@@ -849,18 +1034,6 @@ const buildPdfReport = async () => {
   const DARK = [13, 21, 38], CYAN = [0, 229, 255], GREEN = [22, 163, 74], RED = [225, 29, 72];
   let cursorY = 120;
 
-  // ASCII-only formatters — jsPDF's standard fonts are Latin-1, so the ₹ glyph
-  // (and any non-Latin char) corrupts the cell. Use "Rs" instead.
-  const pdfNum = (v) => {
-    const a = Math.abs(v);
-    if (a >= 1e7) return (v / 1e7).toFixed(2) + " Cr";
-    if (a >= 1e5) return (v / 1e5).toFixed(2) + " L";
-    if (a >= 1e3) return (v / 1e3).toFixed(1) + " K";
-    return String(Math.round(v));
-  };
-  const pnlStr = (v) => (v >= 0 ? "+Rs " : "-Rs ") + pdfNum(Math.abs(v));
-  const roiStr = (v) => (v * 100).toFixed(2) + "%";
-  const fundStr = (cr) => "Rs " + (cr >= 1 ? cr.toFixed(2) + " Cr" : (cr * 100).toFixed(0) + " L");
   const ensureSpace = (needed) => { if (cursorY + needed > H - M) { doc.addPage(); cursorY = M; } };
   let firstSection = true;
   const sectionTitle = (title) => {
@@ -1820,8 +1993,10 @@ const quarterDropdown = quarterDetail
             {/* ── USER PERFORMANCE ── */}
             {showSection("user") && (
             <div className="print-section">
-                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 12 }}>
                     <ExportBtn onClick={exportUserSheet} label="Export User Sheet" />
+                    <ExportBtn onClick={exportUserPdf} label="Export User PDF" icon="📄"
+                        title="Download this view as a printable PDF report" />
                 </div>
                 {sectionHead("User-Wise Performance Table")}
 
