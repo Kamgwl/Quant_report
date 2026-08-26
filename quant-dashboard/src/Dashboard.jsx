@@ -664,7 +664,7 @@ const exportAccountReport = async (r, sel) => {
     };
     const under = { bottom: { style: "thin", color: { argb: LINE } } };
     const topline = { top: { style: "thin", color: { argb: LINE } } };
-    const pnlTone = (v) => (v > 0 ? { fg: POS_FG, bg: POS_BG } : v < 0 ? { fg: NEG_FG, bg: NEG_BG } : { fg: MUTED });
+    const pnlTone = (v) => (v > 0 ? { fg: POS_FG, bg: POS_BG } : v < 0 ? { fg: NEG_FG, bg: NEG_BG, bold: true } : { fg: MUTED });
     const pctTxt = (v) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
     const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -778,7 +778,7 @@ const exportAccountReport = async (r, sel) => {
       if (isTraded) {
         cell(R, 3, m.pnl, { size: 10, numFmt: PNL_FMT, align: "right", border: under, ...pnlTone(m.pnl) });
         cell(R, 4, m.roi, { size: 10, numFmt: ROI_FMT, align: "right", border: under, ...pnlTone(m.roi) });
-        cell(R, 5, cum, { size: 10, numFmt: PNL_FMT, align: "right", bg: zebra, border: under, fg: cum >= 0 ? POS_FG : NEG_FG });
+        cell(R, 5, cum, { size: 10, numFmt: PNL_FMT, align: "right", bg: zebra, border: under, bold: cum < 0, fg: cum >= 0 ? POS_FG : NEG_FG });
         // Inline magnitude bar scaled against this account's largest month, so
         // the shape of the year reads without opening a chart.
         const width = Math.max(1, Math.round((Math.abs(m.pnl) / maxAbs) * 20));
@@ -895,7 +895,7 @@ const exportUserPdf = () => {
           if (d.section === "body" && typeof d.cell.raw === "string") {
             const t = d.cell.raw;
             if (/^[+-]/.test(t)) d.cell.styles.textColor = t[0] === "-" ? PDF_RED : PDF_GREEN;
-            if (/Total/i.test(String(d.row.raw[0]))) d.cell.styles.fontStyle = "bold";
+            if (t[0] === "-" || /Total/i.test(String(d.row.raw[0]))) d.cell.styles.fontStyle = "bold";
           }
         },
       });
@@ -1058,6 +1058,7 @@ const buildPdfReport = async () => {
         if (data.section === "body" && typeof data.cell.raw === "string") {
           const t = data.cell.raw;
           if (/^[+-]/.test(t)) data.cell.styles.textColor = t[0] === "-" ? RED : GREEN;
+          if (t[0] === "-") data.cell.styles.fontStyle = "bold";  // losses carry weight
         }
       },
     });
