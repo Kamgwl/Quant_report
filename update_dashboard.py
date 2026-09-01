@@ -177,36 +177,76 @@ def read_quarter(ws):
         }
     return out
 
+def month_total_cols(ws, want):
+    """(pnl_col, roi_col) for a month detail sheet.
+
+    Prefer an exact row-2 label match ("SEP" / "SEP ROI"). Failing that, fall
+    back to the sheet's structure: every month sheet carries exactly one
+    "<X>" / "<X> ROI" pair to the right of the dated columns, whatever <X>
+    happens to say. SEP-2026 was copied from AUG-2026 and still labels its
+    total columns "AUG" / "AUG ROI", so trusting the label alone loses the
+    whole month — and worse, hands September's numbers to whoever asks for
+    August."""
+    hdr = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(MONTH_HEADER_ROW, c).value
+        if isinstance(v, str) and v.strip():
+            hdr[v.strip().upper()] = c
+    if want in hdr:
+        return hdr[want], hdr.get(want + " ROI")
+    for text, c in hdr.items():
+        if text.endswith(" ROI") and text[:-4].strip() in hdr:
+            return hdr[text[:-4].strip()], c
+    return None, None
+
+
 def read_month_detail(wb, label):
-    """(sheet_name, {code: (pnl, roi, n_rows)}) from whichever detail sheet
-    carries `label` in row 2.
+    """(sheet_name, {code: (pnl, roi, n_rows)}) for one month.
+
+    The sheet is located by NAME ("SEP" -> "SEP-2026"), not by trusting the
+    labels inside it, because a sheet copied from the previous month keeps the
+    previous month's labels. Only if no sheet name matches do we fall back to
+    scanning for the label.
 
     An account can occupy more than one row (AUG-2026 and JULY-2026 both hold
     two rows coded P3390). Values are SUMMED across them, and n_rows reports how
     many were folded together — the rollup's VLOOKUP only ever sees the first."""
     want = label.strip().upper()
+
+    target = None
     for ws in wb.worksheets:
         if ws.title.startswith("FY-"):
             continue
-        hdr = {}
-        for c in range(1, ws.max_column + 1):
-            v = ws.cell(MONTH_HEADER_ROW, c).value
-            if isinstance(v, str):
-                hdr[v.strip().upper()] = c
-        if want not in hdr:
-            continue
-        c_pnl, c_roi = hdr[want], hdr.get(want + " ROI")
-        out = {}
-        for r in range(DATA_START_ROW, ws.max_row + 1):
-            if not is_data_row(ws, r):
+        if ws.title.strip().upper().startswith(want + "-"):
+            target = ws
+            break
+    if target is None:
+        for ws in wb.worksheets:
+            if ws.title.startswith("FY-"):
                 continue
-            code = str(ws.cell(r, COL_CODE).value).strip()
-            pnl = safe_int(ws.cell(r, c_pnl).value)
-            roi = safe_float(ws.cell(r, c_roi).value) if c_roi else 0.0
-            prev = out.get(code, (0, 0.0, 0))
-            out[code] = (prev[0] + pnl, prev[1] + roi, prev[2] + 1)
-        return ws.title, out
-    return None, {}
+            c_pnl, _ = month_total_cols(ws, want)
+            if c_pnl is not None and want in {
+                    str(ws.cell(MONTH_HEADER_ROW, c).value).strip().upper()
+                    for c in range(1, ws.max_column + 1)}:
+                target = ws
+                break
+    if target is None:
+        return None, {}
+
+    c_pnl, c_roi = month_total_cols(target, want)
+    if c_pnl is None:
+        return target.title, {}
+
+    out = {}
+    for r in range(DATA_START_ROW, target.max_row + 1):
+        if not is_data_row(target, r):
+            continue
+        code = str(target.cell(r, COL_CODE).value).strip()
+        pnl = safe_int(target.cell(r, c_pnl).value)
+        roi = safe_float(target.cell(r, c_roi).value) if c_roi else 0.0
+        prev = out.get(code, (0, 0.0, 0))
+        out[code] = (prev[0] + pnl, prev[1] + roi, prev[2] + 1)
+    return target.title, out
 
 
 def repair_from_detail(wb, ws_q, rows):

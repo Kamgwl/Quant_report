@@ -5,3 +5,4 @@ quant-dashboard/dist/
 ~$*.xlsx
 .idea/
 .vscode/
+__pycache__/
