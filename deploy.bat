@@ -32,7 +32,7 @@ if %ERRORLEVEL% neq 0 (
 echo.
 echo [STEP 2/3]  Staging changes in git...
 echo.
-"%GIT%" add index.html indx.html quant-dashboard/src/data.js quant-dashboard/src/Dashboard.jsx
+"%GIT%" add index.html indx.html quant-dashboard/src/data.js quant-dashboard/src/Dashboard.jsx "Quant Strategy(2026-27).xlsx"
 
 "%GIT%" status --short
 echo.
