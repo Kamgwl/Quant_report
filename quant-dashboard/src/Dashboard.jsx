@@ -10,7 +10,6 @@ import autoTable from 'jspdf-autotable'
 import html2canvas from 'html2canvas'
 import { RAW } from './data'
 
-
 // ── CASH STRATEGY DETECTION ────────────────────────────────────────────────────
 const CASH_STRATEGIES = ["CASH", "ETF", "NA"];
 function isCashStrategy(r) {
@@ -34,20 +33,27 @@ const jun_roi = r.jun_roi / 100;
 const jul_roi = (r.jul_roi || 0) / 100;
 const aug_roi = (r.aug_roi || 0) / 100;
 const sep_roi = (r.sep_roi || 0) / 100;
+const oct_roi = (r.oct_roi || 0) / 100;
+const nov_roi = (r.nov_roi || 0) / 100;
+const dec_roi = (r.dec_roi || 0) / 100;
 const jul = r.jul || 0, aug = r.aug || 0, sep = r.sep || 0;
+const oct = r.oct || 0, nov = r.nov || 0, dec = r.dec || 0;
 const q1 = r.apr + r.may + r.jun;
 const q1_roi = apr_roi + may_roi + jun_roi;
 const q2 = jul + aug + sep;
 const q2_roi = jul_roi + aug_roi + sep_roi;
-// Yearly (FY) = sum of all quarters available so far (Q1 + Q2). Add q3/q4 here
-// when those sheets arrive.
-const year = q1 + q2;
-const year_roi = q1_roi + q2_roi;
+const q3 = oct + nov + dec;
+const q3_roi = oct_roi + nov_roi + dec_roi;
+// Yearly (FY) = sum of all quarters available so far (Q1 + Q2 + Q3). Add q4
+// here when that sheet arrives.
+const year = q1 + q2 + q3;
+const year_roi = q1_roi + q2_roi + q3_roi;
 const ann_roi = q1_roi * ANN_FACTOR;   // annualized off the completed Q1 run-rate
 const ann_pnl = q1 * ANN_FACTOR;
 const strategy = (r.strategy || "").trim().toUpperCase();
 return { ...r, strategy, apr_roi, may_roi, jun_roi, jul, aug, sep, jul_roi, aug_roi, sep_roi,
-  q1, q1_roi, q2, q2_roi, year, year_roi, ann_roi, ann_pnl, isCash: isCashStrategy({ ...r, strategy }) };
+  oct, nov, dec, oct_roi, nov_roi, dec_roi,
+  q1, q1_roi, q2, q2_roi, q3, q3_roi, year, year_roi, ann_roi, ann_pnl, isCash: isCashStrategy({ ...r, strategy }) };
 }
 
 const DATA_ALL = RAW.map(enrichRow);
@@ -62,7 +68,7 @@ const MONTHS = [
 ];
 
 // Every FY month we hold data for, in calendar order. `cal` is the JS month
-// index (0=Jan) used to pick the "current month" KPI tile. Extend with Oct–Mar
+// index (0=Jan) used to pick the "current month" KPI tile. Extend with Jan–Mar
 // when those sheets arrive.
 const FY_MONTHS = [
 { key: "apr", label: "April",     short: "Apr", cal: 3, q: "q1" },
@@ -71,6 +77,9 @@ const FY_MONTHS = [
 { key: "jul", label: "July",      short: "Jul", cal: 6, q: "q2" },
 { key: "aug", label: "August",    short: "Aug", cal: 7, q: "q2" },
 { key: "sep", label: "September", short: "Sep", cal: 8, q: "q2" },
+{ key: "oct", label: "October",   short: "Oct", cal: 9,  q: "q3" },
+{ key: "nov", label: "November",  short: "Nov", cal: 10, q: "q3" },
+{ key: "dec", label: "December",  short: "Dec", cal: 11, q: "q3" },
 ];
 
 // Quarter tiles in the KPI row. Clicking one opens the monthly-split popup.
@@ -78,9 +87,10 @@ const FY_MONTHS = [
 const QUARTERS = [
 { id: "q1", label: "Q1", span: "Apr–Jun", months: ["apr", "may", "jun"] },
 { id: "q2", label: "Q2", span: "Jul–Sep", months: ["jul", "aug", "sep"] },
+{ id: "q3", label: "Q3", span: "Oct–Dec", months: ["oct", "nov", "dec"] },
 ];
 const QUARTER_BY_ID = { ...Object.fromEntries(QUARTERS.map(q => [q.id, q])),
-fy: { id: "fy", label: "FY (YTD)", span: "Apr–Sep", months: FY_MONTHS.map(m => m.key) } };
+fy: { id: "fy", label: "FY (YTD)", span: "Apr–Dec", months: FY_MONTHS.map(m => m.key) } };
 
 // Per-month roll-up for any set of accounts. ROI uses the population's own fund
 // as the denominator, so the same helper serves the F&O row and the Cash tab.
@@ -324,8 +334,20 @@ const EXPORT_COLUMNS = [
   { key: "q1_roi", label: "Q1 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "jul", label: "July P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "jul_roi", label: "July ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "aug", label: "August P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "aug_roi", label: "August ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "sep", label: "September P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "sep_roi", label: "September ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "q2", label: "Q2 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "q2_roi", label: "Q2 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "oct", label: "October P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "oct_roi", label: "October ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "nov", label: "November P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "nov_roi", label: "November ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "dec", label: "December P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "dec_roi", label: "December ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
+  { key: "q3", label: "Q3 Net P&L", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
+  { key: "q3_roi", label: "Q3 Net ROI", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "year", label: "FY P&L (YTD)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
   { key: "year_roi", label: "FY ROI (YTD)", align: "right", numFmt: "+0.00%;-0.00%;0.00%", colorCode: true },
   { key: "ann_pnl", label: "Ann. P&L (Projected)", align: "right", numFmt: "+₹#,##,##0;-₹#,##,##0;\"—\"", colorCode: true },
@@ -359,6 +381,14 @@ const COLS_ACCOUNT_FULL = [
   { key: "sep_roi", label: "Sep ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
   { key: "q2", label: "Q2 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
   { key: "q2_roi", label: "Q2 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "oct", label: "Oct P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "oct_roi", label: "Oct ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "nov", label: "Nov P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "nov_roi", label: "Nov ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "dec", label: "Dec P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "dec_roi", label: "Dec ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
+  { key: "q3", label: "Q3 P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
+  { key: "q3_roi", label: "Q3 ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
   { key: "year", label: "FY P&L", align: "right", numFmt: PNL_FMT, colorCode: true },
   { key: "year_roi", label: "FY ROI", align: "right", numFmt: ROI_FMT, colorCode: true },
 ];
@@ -372,7 +402,8 @@ const COLS_STRATEGY = [
   { key: "roi", label: "Q1 ROI %", align: "right", numFmt: "0.00\"%\"", colorCode: true },
 ];
 
-const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2", year:"FY" };
+const MONTH_LABEL = { apr:"April", may:"May", jun:"June", q1:"Q1", jul:"July", aug:"Aug", sep:"Sep", q2:"Q2",
+  oct:"Oct", nov:"Nov", dec:"Dec", q3:"Q3", year:"FY" };
 
 // ASCII-only PDF formatters — jsPDF's standard fonts are Latin-1, so the ₹ glyph
 // (and any non-Latin char) corrupts the cell. Use "Rs" instead.
@@ -402,12 +433,17 @@ const PERIODS = [
   { key: "aug",  label: "Aug",  full: "August",        kind: "month",   q: "q2" },
   { key: "sep",  label: "Sep",  full: "September",     kind: "month",   q: "q2" },
   { key: "q2",   label: "Q2",   full: "Q2 total",      kind: "quarter", q: "q2" },
+  { key: "oct",  label: "Oct",  full: "October",       kind: "month",   q: "q3" },
+  { key: "nov",  label: "Nov",  full: "November",      kind: "month",   q: "q3" },
+  { key: "dec",  label: "Dec",  full: "December",      kind: "month",   q: "q3" },
+  { key: "q3",   label: "Q3",   full: "Q3 total",      kind: "quarter", q: "q3" },
   { key: "year", label: "FY",   full: "FY total (YTD)", kind: "total" },
 ];
 const ALL_PERIODS = Object.fromEntries(PERIODS.map(p => [p.key, true]));
 const PERIOD_GROUPS = [
   { title: "Q1 · Apr–Jun", keys: ["apr", "may", "jun", "q1"] },
   { title: "Q2 · Jul–Sep", keys: ["jul", "aug", "sep", "q2"] },
+  { title: "Q3 · Oct–Dec", keys: ["oct", "nov", "dec", "q3"] },
   { title: "Full year",    keys: ["year"] },
 ];
 
@@ -523,8 +559,20 @@ const [selectedCols, setSelectedCols] = useState({
   q1_roi: true,
   jul: true,
   jul_roi: true,
+  aug: true,
+  aug_roi: true,
+  sep: true,
+  sep_roi: true,
   q2: true,
   q2_roi: true,
+  oct: true,
+  oct_roi: true,
+  nov: true,
+  nov_roi: true,
+  dec: true,
+  dec_roi: true,
+  q3: true,
+  q3_roi: true,
   year: true,
   year_roi: true,
   ann_pnl: true,
@@ -692,6 +740,7 @@ const exportAccountReport = async (r, sel) => {
     const worst = traded.slice().sort((a, b) => a.pnl - b.pnl)[0];
     // Counted off the account itself — a period filter must not change the fact.
     const q2Traded = FY_MONTHS.filter(m => m.q === "q2" && ((r[m.key] || 0) !== 0 || (r[m.key + "_roi"] || 0) !== 0)).length;
+    const q3Traded = FY_MONTHS.filter(m => m.q === "q3" && ((r[m.key] || 0) !== 0 || (r[m.key + "_roi"] || 0) !== 0)).length;
 
     let R = 1;
     ws.getRow(R).height = 6; R++;
@@ -732,6 +781,11 @@ const exportAccountReport = async (r, sel) => {
       figure("Q2 Net P&L  (Jul–Sep, YTD)", r.q2, { numFmt: PNL_FMT, ...pnlTone(r.q2) },
         `${q2Traded} of 3 months traded so far`);
       figure("Q2 ROI  (YTD)", r.q2_roi, { numFmt: ROI_FMT, ...pnlTone(r.q2_roi) }, "");
+    }
+    if (on("q3")) {
+      figure("Q3 Net P&L  (Oct–Dec, YTD)", r.q3, { numFmt: PNL_FMT, ...pnlTone(r.q3) },
+        `${q3Traded} of 3 months traded so far`);
+      figure("Q3 ROI  (YTD)", r.q3_roi, { numFmt: ROI_FMT, ...pnlTone(r.q3_roi) }, "");
     }
     if (on("year")) {
       figure("FY Net P&L  (YTD)", r.year, { numFmt: PNL_FMT, bold: true, ...pnlTone(r.year) },
@@ -794,17 +848,19 @@ const exportAccountReport = async (r, sel) => {
       const next = months[i + 1];
       if (m.q === "q1" && (!next || next.q !== "q1") && on("q1")) totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
       if (m.q === "q2" && (!next || next.q !== "q2") && on("q2")) totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
+      if (m.q === "q3" && (!next || next.q !== "q3") && on("q3")) totalRow("Q3 Total  (Oct–Dec)", r.q3, r.q3_roi, "FFEFF4FA");
     });
     // Quarter totals still belong in the sheet when no month rows were selected.
     if (!months.length) {
       if (on("q1")) totalRow("Q1 Total  (Apr–Jun)", r.q1, r.q1_roi, "FFEFF4FA");
       if (on("q2")) totalRow("Q2 Total  (Jul–Sep)", r.q2, r.q2_roi, "FFEFF4FA");
+      if (on("q3")) totalRow("Q3 Total  (Oct–Dec)", r.q3, r.q3_roi, "FFEFF4FA");
     }
     if (on("year")) totalRow("FY TOTAL  (YTD)", r.year, r.year_roi, "FFE3ECF7");
     R++;
 
     band(R, 2, 6, (allMonthsOn ? "" : "Cumulative runs over the periods shown, not the full year.  ·  ") +
-      "Generated from the Quant Strategy dashboard  ·  Figures are net, as recorded in the source workbook  ·  Q3–Q4 pending",
+      "Generated from the Quant Strategy dashboard  ·  Figures are net, as recorded in the source workbook  ·  Q4 pending",
       { size: 8, italic: true, fg: MUTED, indent: 1 });
 
     const buffer = await wb.xlsx.writeBuffer();
@@ -907,7 +963,7 @@ const exportUserPdf = () => {
     doc.setTextColor(0, 229, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
     doc.text("Quant Strategy Dashboard", M, 42);
     doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(210, 220, 235);
-    doc.text("FY 2026-27   |   Q1 + Q2 Performance Report   |   April - September 2026", M, 64);
+    doc.text("FY 2026-27   |   Q1 + Q2 + Q3 Performance Report   |   April - December 2026", M, 64);
     doc.setFontSize(9); doc.setTextColor(150, 165, 185);
     doc.text("Generated " + new Date().toLocaleString("en-IN"), M, 82);
 
@@ -1108,7 +1164,7 @@ const buildPdfReport = async () => {
     doc.setTextColor(0, 229, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(20);
     doc.text("Quant Strategy Dashboard", M, 42);
     doc.setFont("helvetica", "normal"); doc.setFontSize(11); doc.setTextColor(210, 220, 235);
-    doc.text("FY 2026-27   |   Q1 + Q2 Performance Report   |   April - September 2026", M, 64);
+    doc.text("FY 2026-27   |   Q1 + Q2 + Q3 Performance Report   |   April - December 2026", M, 64);
     doc.setFontSize(9); doc.setTextColor(150, 165, 185);
     doc.text("Generated " + new Date().toLocaleString("en-IN"), M, 82);
 
@@ -1123,7 +1179,7 @@ const buildPdfReport = async () => {
       doc.roundedRect(M, cursorY, CONTENT_W, heroH, 8, 8, "F");
       doc.setFillColor(hero[0], hero[1], hero[2]); doc.roundedRect(M, cursorY, 6, heroH, 3, 3, "F");
       doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(90, 105, 125);
-      doc.text("FY NET P&L  (YTD, Q1 + Q2)", M + 22, cursorY + 22);
+      doc.text("FY NET P&L  (YTD, Q1 + Q2 + Q3)", M + 22, cursorY + 22);
       doc.setFontSize(24); doc.setTextColor(hero[0], hero[1], hero[2]);
       doc.text(pnlStr(totals.fyPnL), M + 22, cursorY + 48);
       doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(70, 84, 104);
@@ -1133,18 +1189,19 @@ const buildPdfReport = async () => {
         W - M - 22, cursorY + 44, { align: "right" });
       cursorY += heroH + 16;
 
-      // ── KPI cards (2 x 2) ──
+      // ── KPI cards (2 per row) ──
       const gapX = 16, gapY = 14, cardH = 62, cardW = (CONTENT_W - gapX) / 2;
       const cards = [
         ["Total AUM (Utilized)", fundStr(totals.totalFund), totals.count + " accounts", CYAN, NAVY],
-        ["FY ROI (YTD)", roiStr(totals.fyROI), "Q1 + Q2 combined", CYAN, gr(totals.fyROI)],
+        ["FY ROI (YTD)", roiStr(totals.fyROI), "Q1 + Q2 + Q3 combined", CYAN, gr(totals.fyROI)],
         ["Q1 Net P&L (Apr-Jun)", pnlStr(totals.q1PnL), "ROI " + roiStr(totals.q1ROI), gr(totals.q1PnL), gr(totals.q1PnL)],
         ["Q2 Net P&L (Jul-Sep)", pnlStr(totals.q2PnL), "ROI " + roiStr(totals.q2ROI), gr(totals.q2PnL), gr(totals.q2PnL)],
+        ["Q3 Net P&L (Oct-Dec)", pnlStr(totals.q3PnL), "ROI " + roiStr(totals.q3ROI), gr(totals.q3PnL), gr(totals.q3PnL)],
       ];
       cards.forEach((c, i) => kpiCard(
         M + (i % 2) * (cardW + gapX), cursorY + Math.floor(i / 2) * (cardH + gapY),
         cardW, cardH, c[0], c[1], c[2], c[3], c[4]));
-      cursorY += 2 * (cardH + gapY) + 8;
+      cursorY += Math.ceil(cards.length / 2) * (cardH + gapY) + 8;
 
       // These headline figures are the whole book; the F&O tables that follow
       // leave Cash / ETF out, so the two will not tie out.
@@ -1162,19 +1219,20 @@ const buildPdfReport = async () => {
       const fund = totals.totalFund, mroi = (p) => fund > 0 ? p / (fund * 1e7) : 0;
       const grM = (v) => (v >= 0 ? GREEN : RED);
       const cH = 56, rowGap = 12;
-      ensureSpace(50 + rowGap + 2 * (cH + rowGap) + 6);
+      ensureSpace(50 + rowGap + 3 * (cH + rowGap) + 6);
       // Yearly P&L on top (full-width)
-      kpiCard(M, cursorY, CONTENT_W, 50, "FY (YTD) Net P&L  -  Q1 + Q2",
+      kpiCard(M, cursorY, CONTENT_W, 50, "FY (YTD) Net P&L  -  Q1 + Q2 + Q3",
         pnlStr(totals.fyPnL), "ROI " + roiStr(mroi(totals.fyPnL)), CYAN, grM(totals.fyPnL));
       cursorY += 50 + rowGap;
-      // Q1 row, then Q2 row (July starts a new row)
+      // One row per quarter, four cards each (three months + the quarter total)
       const gx = 10, cW = (CONTENT_W - 3 * gx) / 4;
       const drawRow = (arr, ry) => arr.forEach((m, i) => kpiCard(
         M + i * (cW + gx), ry, cW, cH, m[0], pnlStr(m[1]), "ROI " + roiStr(mroi(m[1])),
         m[2] ? CYAN : grM(m[1]), grM(m[1])));
       drawRow([["April", totals.aprPnL], ["May", totals.mayPnL], ["June", totals.junPnL], ["Q1 Total", totals.q1PnL, true]], cursorY);
       drawRow([["July", totals.julPnL], ["August", totals.augPnL], ["September", totals.sepPnL], ["Q2 Total", totals.q2PnL, true]], cursorY + cH + rowGap);
-      cursorY += 2 * (cH + rowGap) + 4;
+      drawRow([["October", totals.octPnL], ["November", totals.novPnL], ["December", totals.decPnL], ["Q3 Total", totals.q3PnL, true]], cursorY + 2 * (cH + rowGap));
+      cursorY += 3 * (cH + rowGap) + 4;
     }
 
     if (printSel.quarterly) {
@@ -1253,13 +1311,19 @@ const totals = useMemo(() => {
   const q1ROI = totalFund > 0 ? q1PnL / (totalFund * 1e7) : 0;
   const annROI = q1ROI * ANN_FACTOR;
   const annPnL = q1PnL * ANN_FACTOR;
-  // Q2 (Jul–Sep) and full-year-to-date (Q1 + Q2)
+  // Q2 (Jul–Sep)
   const julPnL = normalSection.reduce((s, r) => s + r.jul, 0);
   const augPnL = normalSection.reduce((s, r) => s + r.aug, 0);
   const sepPnL = normalSection.reduce((s, r) => s + r.sep, 0);
   const q2PnL = julPnL + augPnL + sepPnL;
   const q2ROI = totalFund > 0 ? q2PnL / (totalFund * 1e7) : 0;
-  const fyPnL = q1PnL + q2PnL;
+  // Q3 (Oct–Dec) and full-year-to-date (Q1 + Q2 + Q3)
+  const octPnL = normalSection.reduce((s, r) => s + r.oct, 0);
+  const novPnL = normalSection.reduce((s, r) => s + r.nov, 0);
+  const decPnL = normalSection.reduce((s, r) => s + r.dec, 0);
+  const q3PnL = octPnL + novPnL + decPnL;
+  const q3ROI = totalFund > 0 ? q3PnL / (totalFund * 1e7) : 0;
+  const fyPnL = q1PnL + q2PnL + q3PnL;
   const fyROI = totalFund > 0 ? fyPnL / (totalFund * 1e7) : 0;
   const winners = normalSection.filter(r => r.q1 > 0).length;
   const losers = normalSection.filter(r => r.q1 < 0).length;
@@ -1268,7 +1332,8 @@ const totals = useMemo(() => {
   // current-month tile without hardcoding another `xxxPnL` per month.
   const byMonth = monthAgg(normalSection, totalFund);
   return { totalFund, aprPnL, mayPnL, junPnL, q1PnL, q1ROI, annROI, annPnL,
-    julPnL, augPnL, sepPnL, q2PnL, q2ROI, fyPnL, fyROI, winners, losers, count, byMonth };
+    julPnL, augPnL, sepPnL, q2PnL, q2ROI,
+    octPnL, novPnL, decPnL, q3PnL, q3ROI, fyPnL, fyROI, winners, losers, count, byMonth };
 }, []);
 
 // Cash / ETF accounts sitting inside the headline totals (group 1 includes
@@ -1373,6 +1438,25 @@ const quarterDropdown = quarterDetail
         })
         .slice(-5).reverse(), [q2Ranked]);
 
+    // ── Best/Worst performers Q3 (F&O) ──
+    const q3Ranked = useMemo(() => [...DATA]
+    .filter(r => !r.isCash && r.q3 !== 0)
+    .sort((a, b) => b.q3_roi - a.q3_roi), []);
+
+    const q3Top5 = useMemo(() => q3Ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(0, 5), [q3Ranked]);
+
+    const q3Bot5 = useMemo(() => q3Ranked
+        .filter(r => {
+            const n = r.name.toLowerCase();
+            return !n.includes("jinesh jain") && !n.includes("ramakar jha");
+        })
+        .slice(-5).reverse(), [q3Ranked]);
+
     // ── Best/Worst performers Q1 (Cash) ──
     // Filtered on the full year, not Q1, so an account that only traded in
     // Jul–Sep still reaches the charts and the detail table.
@@ -1402,7 +1486,7 @@ const quarterDropdown = quarterDetail
     .map(s => ({ ...s, roi: s.fund > 0 ? (s.pnl / (s.fund * 1e7)) * 100 : 0 }));
     }, []);
 
-    // ── Monthly trend (Apr–Sep; Q2 months appear once data lands) ──
+    // ── Monthly trend (Apr–Dec; later months appear once data lands) ──
     const roiOf = (p) => totals.totalFund > 0 ? p / (totals.totalFund * 1e7) : 0;
     const trendData = [
     { month: "Apr", pnl: totals.aprPnL, roi: roiOf(totals.aprPnL) },
@@ -1411,6 +1495,9 @@ const quarterDropdown = quarterDetail
     { month: "Jul", pnl: totals.julPnL, roi: roiOf(totals.julPnL) },
     { month: "Aug", pnl: totals.augPnL, roi: roiOf(totals.augPnL) },
     { month: "Sep", pnl: totals.sepPnL, roi: roiOf(totals.sepPnL) },
+    { month: "Oct", pnl: totals.octPnL, roi: roiOf(totals.octPnL) },
+    { month: "Nov", pnl: totals.novPnL, roi: roiOf(totals.novPnL) },
+    { month: "Dec", pnl: totals.decPnL, roi: roiOf(totals.decPnL) },
     ];
 
     // ROI trend. A month with nothing booked carries roi:null rather than 0 —
@@ -1517,7 +1604,7 @@ const quarterDropdown = quarterDetail
                         <div>
                             <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: -0.5 }}>Quant Strategy
                                 Dashboard</h1>
-                            <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 + Q2
+                            <div style={{ color: "var(--muted2)" , fontSize: 12, marginTop: 2 }}>FY 2026–27 · Q1 + Q2 + Q3
                                 Performance Report · April – September 2026</div>
                         </div>
                     </div>
@@ -1604,7 +1691,11 @@ const quarterDropdown = quarterDetail
                     color={totals.q2PnL>= 0 ? POS : NEG}
                     onClick={printMode ? undefined : () => toggleQuarter("q2")} hint="Monthly split"
                     open={openQuarter === "q2"} dropdown={quarterDropdown} />
-                <StatCard label="FY Net P&L (YTD)" value={fmtSign(totals.fyPnL)} sub={`ROI ${fmtROI(totals.fyROI)} · Q1 + Q2`}
+                <StatCard label="Q3 Net P&L" value={fmtSign(totals.q3PnL)} sub={`ROI ${fmtROI(totals.q3ROI)} · Oct–Dec`}
+                    color={totals.q3PnL>= 0 ? POS : NEG}
+                    onClick={printMode ? undefined : () => toggleQuarter("q3")} hint="Monthly split"
+                    open={openQuarter === "q3"} dropdown={quarterDropdown} />
+                <StatCard label="FY Net P&L (YTD)" value={fmtSign(totals.fyPnL)} sub={`ROI ${fmtROI(totals.fyROI)} · Q1 + Q2 + Q3`}
                     color={totals.fyPnL>= 0 ? POS : NEG}
                     onClick={printMode ? undefined : () => toggleQuarter("fy")} hint="All months"
                     open={openQuarter === "fy"} dropdown={quarterDropdown} />
@@ -1733,6 +1824,8 @@ const quarterDropdown = quarterDetail
                     {[{ id: "apr", label: "April" }, { id: "may", label: "May" }, { id: "jun", label: "June" },
                     { id: "q1", label: "Q1 Total" }, { id: "jul", label: "July" }, { id: "aug", label: "Aug" },
                     { id: "sep", label: "Sep" }, { id: "q2", label: "Q2 Total" },
+                    { id: "oct", label: "Oct" }, { id: "nov", label: "Nov" },
+                    { id: "dec", label: "Dec" }, { id: "q3", label: "Q3 Total" },
                     { id: "year", label: "Yearly (FY)" }].map(m => (
                     <button key={m.id} onClick={()=> setSelectedMonth(m.id)} style={{
                         padding: "6px 16px", borderRadius: 6, border: `1px solid ${BORDER}`, cursor: "pointer",
@@ -1917,6 +2010,71 @@ const quarterDropdown = quarterDetail
                 </div>
                 )}
 
+                {/* Best vs Worst — Q3 */}
+                {sectionHead("Q3 Best / Worst Performers (Oct + Nov + Dec)")}
+                {q3Ranked.length === 0 ? (
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}`,
+                        color: MUTED_C, fontSize: 13, marginBottom: 28 }}>
+                        No Q3 trades booked yet — this will populate as October / November / December data is entered.
+                    </div>
+                ) : (
+                <div style={{ display: "grid" , gridTemplateColumns: "1fr 1fr" , gap: 24, marginBottom: 28 }}>
+                    {/* Q3 Top 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: POS, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            🏆 TOP 5 PERFORMERS — Q3 ROI</div>
+                        {q3Top5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < q3Top5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: POS,
+                                    color: "#000" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: POS, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q3_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmtSign(r.q3)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+
+                    {/* Q3 Bot 5 */}
+                    <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
+                        <div style={{ color: NEG, fontSize: 12, fontWeight: 800, letterSpacing: 2, marginBottom: 14 }}>
+                            ⚠️ BOTTOM 5 PERFORMERS — Q3 ROI</div>
+                        {q3Bot5.map((r, i) => (
+                        <div key={r.code} style={{ display: "flex" , justifyContent: "space-between" ,
+                            alignItems: "center" , padding: "10px 0" , borderBottom: i < q3Bot5.length - 1 ? `1px solid ${BORDER}`
+                            : "none" }}>
+                            <div style={{ display: "flex" , gap: 10, alignItems: "center" }}>
+                                <div style={{ width: 26, height: 26, borderRadius: "50%" , background: NEG,
+                                    color: "#fff" , fontWeight: 800, fontSize: 12, display: "flex" ,
+                                    alignItems: "center" , justifyContent: "center" }}>{i + 1}</div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{r.name}</div>
+                                    <div style={{ color: MUTED2_C , fontSize: 11 }}>{r.strategy || "—"} · {fmtFund(r.fund)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ color: NEG, fontWeight: 800, fontFamily: "'DM Mono', monospace" ,
+                                    fontSize: 14 }}>{fmtROI(r.q3_roi)}</div>
+                                <div style={{ color: MUTED_C , fontSize: 11 }}>{fmt(r.q3)}</div>
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                </div>
+                )}
+
                 {/* Full Q1 bar */}
                 {sectionHead("Full Q1 P&L & ROI — Best to Worst (F&O Only)")}
                 <div style={{ background: CARD, borderRadius: 12, padding: 20, border: `1px solid ${BORDER}` }}>
@@ -2087,6 +2245,7 @@ const quarterDropdown = quarterDetail
                             : `${ranked.length} ACCOUNTS`}
                     </span>
                 </div>
+
             <div style={{ background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "auto" }}>
                     <table style={{ width: "100%" , borderCollapse: "collapse" , fontSize: 11 }}>
                         <thead>
@@ -2239,7 +2398,8 @@ const quarterDropdown = quarterDetail
             const cashByMonth = monthAgg(cashSection, cashTotalFund);
             const cashQ1 = QUARTERS[0].months.reduce((s, k) => s + cashByMonth[k].pnl, 0);
             const cashQ2 = QUARTERS[1].months.reduce((s, k) => s + cashByMonth[k].pnl, 0);
-            const cashFY = cashQ1 + cashQ2;
+            const cashQ3 = QUARTERS[2].months.reduce((s, k) => s + cashByMonth[k].pnl, 0);
+            const cashFY = cashQ1 + cashQ2 + cashQ3;
             const cashROI = (v) => cashTotalFund > 0 ? v / (cashTotalFund * 1e7) : 0;
             const cashMonth = latestMonth(cashByMonth);
             const cashDetail = buildQuarterDetail(openCashQuarter, cashByMonth, cashTotalFund);
@@ -2279,7 +2439,11 @@ const quarterDropdown = quarterDetail
                         color={cashQ2>= 0 ? POS : NEG}
                         onClick={printMode ? undefined : () => toggleCashQuarter("q2")} hint="Monthly split"
                         open={openCashQuarter === "q2"} dropdown={cashDropdown} />
-                    <StatCard label="FY Net P&L (YTD)" value={fmtSign(cashFY)} sub={`ROI ${fmtROI(cashROI(cashFY))} · Q1 + Q2`}
+                    <StatCard label="Q3 Net P&L" value={fmtSign(cashQ3)} sub={`ROI ${fmtROI(cashROI(cashQ3))} · Oct–Dec`}
+                        color={cashQ3>= 0 ? POS : NEG}
+                        onClick={printMode ? undefined : () => toggleCashQuarter("q3")} hint="Monthly split"
+                        open={openCashQuarter === "q3"} dropdown={cashDropdown} />
+                    <StatCard label="FY Net P&L (YTD)" value={fmtSign(cashFY)} sub={`ROI ${fmtROI(cashROI(cashFY))} · Q1 + Q2 + Q3`}
                         color={cashFY>= 0 ? POS : NEG}
                         onClick={printMode ? undefined : () => toggleCashQuarter("fy")} hint="All months"
                         open={openCashQuarter === "fy"} dropdown={cashDropdown} />
@@ -2735,7 +2899,7 @@ const quarterDropdown = quarterDetail
         )}
 
         <div style={{ textAlign: "center" , color: "var(--border)" , fontSize: 11, marginTop: 20 }}>
-            Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q1 + Q2 (Apr–Sep) · Q3–Q4 pending
+            Quant Strategy FY 2026–27 · Data sourced from uploaded Excel · Q1 + Q2 (Apr–Sep) · Q3 (Oct–Dec) in progress · Q4 pending
         </div>
     </div>
     );

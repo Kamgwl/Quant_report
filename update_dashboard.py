@@ -20,6 +20,7 @@ from datetime import datetime
 EXCEL_FILE  = "Quant Strategy(2026-27).xlsx"
 SHEET_Q1    = "FY-(26-27)Q1"   # Apr / May / Jun
 SHEET_Q2    = "FY-(26-27)Q2"   # Jul / Aug / Sep
+SHEET_Q3    = "FY-(26-27)Q3"   # Oct / Nov / Dec
 
 # Column positions (1-based). The Q1 and Q2 sheets share an identical layout;
 # only the three month columns mean different months (Apr-Jun vs Jul-Sep).
@@ -31,11 +32,11 @@ COL_NAME     = 2
 COL_STRATEGY = 4
 COL_SEGMENT  = 5
 COL_FUND     = 6
-COL_M1       = 7    # Apr (Q1)  /  Jul (Q2)
+COL_M1       = 7    # Apr (Q1)  /  Jul (Q2)  /  Oct (Q3)
 COL_M1_ROI   = 8
-COL_M2       = 9    # May (Q1)  /  Aug (Q2)
+COL_M2       = 9    # May (Q1)  /  Aug (Q2)  /  Nov (Q3)
 COL_M2_ROI   = 10
-COL_M3       = 11   # Jun (Q1)  /  Sep (Q2)
+COL_M3       = 11   # Jun (Q1)  /  Sep (Q2)  /  Dec (Q3)
 COL_M3_ROI   = 12
 
 DATA_START_ROW = 4   # row 3 is the header row; data from row 4
@@ -299,22 +300,30 @@ def extract_accounts(excel_path):
 
     q1 = read_quarter(wb[SHEET_Q1])
     q2 = read_quarter(wb[SHEET_Q2]) if SHEET_Q2 in wb.sheetnames else {}
-    print(f"    Q1 sheet: {len(q1)} accounts | Q2 sheet: {len(q2)} accounts.")
+    q3 = read_quarter(wb[SHEET_Q3]) if SHEET_Q3 in wb.sheetnames else {}
+    print(f"    Q1 sheet: {len(q1)} accounts | Q2 sheet: {len(q2)} accounts"
+          f" | Q3 sheet: {len(q3)} accounts.")
 
     n = repair_from_detail(wb, wb[SHEET_Q1], q1)
     if SHEET_Q2 in wb.sheetnames:
         n += repair_from_detail(wb, wb[SHEET_Q2], q2)
+    if SHEET_Q3 in wb.sheetnames:
+        n += repair_from_detail(wb, wb[SHEET_Q3], q3)
     print(f"    Reconciled {n} month value(s) against the detail sheets.")
 
-    # Union of codes, Q1 order first, then any Q2-only codes appended.
-    codes = list(q1.keys()) + [c for c in q2 if c not in q1]
+    # Union of codes, Q1 order first, then any Q2/Q3-only codes appended.
+    codes = list(q1.keys())
+    codes += [c for c in q2 if c not in q1]
+    codes += [c for c in q3 if c not in q1 and c not in q2]
     EMPTY = {"m1": 0, "m1_roi": 0.0, "m2": 0, "m2_roi": 0.0, "m3": 0, "m3_roi": 0.0}
 
     accounts = []
     for code in codes:
         a1  = q1.get(code, EMPTY)
         a2  = q2.get(code, EMPTY)
-        ident = q1.get(code) or q2.get(code)   # identity/fund from Q1 if present
+        a3  = q3.get(code, EMPTY)
+        # identity/fund from the earliest quarter that carries the account
+        ident = q1.get(code) or q2.get(code) or q3.get(code)
 
         raw_name  = ident["name"]
         raw_strat = ident["strategy"]
@@ -349,10 +358,14 @@ def extract_accounts(excel_path):
             "jul": a2["m1"], "jul_roi": round(a2["m1_roi"], 4),
             "aug": a2["m2"], "aug_roi": round(a2["m2_roi"], 4),
             "sep": a2["m3"], "sep_roi": round(a2["m3_roi"], 4),
+            # Q3 months
+            "oct": a3["m1"], "oct_roi": round(a3["m1_roi"], 4),
+            "nov": a3["m2"], "nov_roi": round(a3["m2_roi"], 4),
+            "dec": a3["m3"], "dec_roi": round(a3["m3_roi"], 4),
             "is_deepesh": is_deepesh,
         })
 
-    print(f"    Merged {len(accounts)} accounts (Q1 + Q2).")
+    print(f"    Merged {len(accounts)} accounts (Q1 + Q2 + Q3).")
     return accounts
 
 # ── JS RAW ARRAY BUILDER ──────────────────────────────────────────────────────
@@ -379,7 +392,10 @@ def build_raw_js(accounts):
             f'jun:{acc["jun"]}, jun_roi:{fmt_num(acc["jun_roi"])}, '
             f'jul:{acc["jul"]}, jul_roi:{fmt_num(acc["jul_roi"])}, '
             f'aug:{acc["aug"]}, aug_roi:{fmt_num(acc["aug_roi"])}, '
-            f'sep:{acc["sep"]}, sep_roi:{fmt_num(acc["sep_roi"])} }}{comma}'
+            f'sep:{acc["sep"]}, sep_roi:{fmt_num(acc["sep_roi"])}, '
+            f'oct:{acc["oct"]}, oct_roi:{fmt_num(acc["oct_roi"])}, '
+            f'nov:{acc["nov"]}, nov_roi:{fmt_num(acc["nov_roi"])}, '
+            f'dec:{acc["dec"]}, dec_roi:{fmt_num(acc["dec_roi"])} }}{comma}'
         )
         lines.append(line)
 
@@ -463,9 +479,11 @@ def main():
     tot = lambda k: sum(a[k] for a in accounts)
     total_apr, total_may, total_jun = tot("apr"), tot("may"), tot("jun")
     total_jul, total_aug, total_sep = tot("jul"), tot("aug"), tot("sep")
+    total_oct, total_nov, total_dec = tot("oct"), tot("nov"), tot("dec")
     total_q1 = total_apr + total_may + total_jun
     total_q2 = total_jul + total_aug + total_sep
-    total_fy = total_q1 + total_q2
+    total_q3 = total_oct + total_nov + total_dec
+    total_fy = total_q1 + total_q2 + total_q3
 
     print(f"\n[4/4] Done -- {updated} file(s) updated.  {len(accounts)} accounts.")
     print(f"      Apr P&L: Rs. {total_apr:>14,.0f}")
@@ -477,6 +495,11 @@ def main():
     print(f"      Aug P&L: Rs. {total_aug:>14,.0f}")
     print(f"      Sep P&L: Rs. {total_sep:>14,.0f}")
     print(f"      Q2  P&L: Rs. {total_q2:>14,.0f}")
+    print(f"      ---")
+    print(f"      Oct P&L: Rs. {total_oct:>14,.0f}")
+    print(f"      Nov P&L: Rs. {total_nov:>14,.0f}")
+    print(f"      Dec P&L: Rs. {total_dec:>14,.0f}")
+    print(f"      Q3  P&L: Rs. {total_q3:>14,.0f}")
     print(f"      ===")
     print(f"      FY  P&L: Rs. {total_fy:>14,.0f}")
 
