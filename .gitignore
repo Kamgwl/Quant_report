@@ -7,3 +7,4 @@ quant-dashboard/dist/
 .vscode/
 __pycache__/
 Quant Strategy(2026-27) v2.xlsx
+deploy_last.log

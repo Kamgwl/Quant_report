@@ -66,11 +66,27 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-"%GIT%" push origin main
-if %ERRORLEVEL% neq 0 (
+"%GIT%" push origin main > "%DIR%deploy_last.log" 2>&1
+:: capture git's exit code BEFORE 'type', which resets ERRORLEVEL
+set "PUSHRC=%ERRORLEVEL%"
+type "%DIR%deploy_last.log"
+if not "%PUSHRC%"=="0" (
     echo.
     echo [ERROR] Push failed. You may need to authenticate.
     echo         If prompted, use your GitHub Personal Access Token as the password.
+    echo         Full error saved to: %DIR%deploy_last.log
+    pause
+    exit /b 1
+)
+
+:: -- Verify the push actually landed on GitHub -----------------
+"%GIT%" fetch origin >nul 2>&1
+"%GIT%" diff --quiet origin/main HEAD
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo [ERROR] Push reported success, but GitHub is still behind.
+    echo         Your commits are LOCAL ONLY -- the site will NOT update.
+    echo         Check with:  git status -sb     ^(look for "ahead"^)
     pause
     exit /b 1
 )
