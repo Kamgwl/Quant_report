@@ -91,6 +91,46 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+:: -- Verify GitHub Pages actually BUILT the pushed commit ------
+:: The push landing is not the same as the site updating: GitHub's
+:: Pages trigger silently skips a push now and then (2 of the last 30
+:: as of 2026-11-05), leaving the site on the previous build with no
+:: error anywhere. Poll the deployments API for this commit's SHA.
+"%GIT%" rev-parse --short HEAD > "%TEMP%\qr_sha.txt"
+set /p SHA=<"%TEMP%\qr_sha.txt"
+echo.
+echo Waiting for GitHub Pages to build %SHA% ...
+set "BUILT="
+set "APIURL=https://api.github.com/repos/Kamgwl/Quant_report/deployments?environment=github-pages&per_page=5"
+for /l %%n in (1,1,12) do (
+    if not defined BUILT (
+        curl -s "%APIURL%" > "%TEMP%\qr_pages.json" 2>nul
+        findstr /c:"%SHA%" "%TEMP%\qr_pages.json" >nul 2>&1
+        if not errorlevel 1 (
+            set "BUILT=1"
+        ) else (
+            rem portable sleep ~15s: 'timeout' fails when stdin is redirected
+            ping -n 16 127.0.0.1 >nul 2>&1
+        )
+    )
+)
+if defined BUILT (
+    echo   Pages build confirmed for %SHA%.
+) else (
+    echo.
+    echo [WARN] Pushed OK, but GitHub Pages has not built %SHA%.
+    echo        The site is still serving the PREVIOUS build.
+    echo        This is a known GitHub-side hiccup, not a problem with
+    echo        your data. Force a rebuild with:
+    echo.
+    echo            git commit --allow-empty -m "Trigger Pages rebuild"
+    echo            git push origin main
+    echo.
+    echo        ^(If curl or the network was unavailable, this check is
+    echo         inconclusive -- open the Actions tab to confirm.^)
+    pause
+)
+
 echo.
 echo ════════════════════════════════════════════════════
 echo   SUCCESS!  Changes pushed to GitHub.
